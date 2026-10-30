@@ -77,8 +77,8 @@
   eq('샘플 12월 추이 길이', Object.values(R.monthlyTrend(assigns, 2026))[0].length, 12);
 
   // 8) 오늘의 할일 (tasks.js)
-  const T = typeof require === 'function' ? require('../tasks.js') : window.AuditTasks;
-  const pr = T.parseTasks([
+  const TK = typeof require === 'function' ? require('../tasks.js') : window.AuditTasks;
+  const pr = TK.parseTasks([
     { '기한': '2026-10-30', '담당자': '갑', '할일': '보고서 작성', '업체명': 'A', '상태': '진행' },
     { '기한': '2026-10-27', '담당자': '갑', '할일': '지연된 일', '상태': '대기' },
     { '기한': '2026-10-30', '담당자': '을', '할일': '끝난 일', '상태': '완료' },
@@ -89,7 +89,7 @@
   eq('할일 파싱: 잘못된 행은 경고와 함께 제외', [pr.tasks.length, pr.warnings.length], [5, 1]);
   const todayRows = R.parseRecords([{ '심사일자': '2026-10-30', '업체명': 'A', '인증분야': '농산물', '정심사원': '갑', '부심사원': '을', '진행상태': '완료' },
     { '심사일자': '2026-10-30', '업체명': 'B', '인증분야': '농산물', '정심사원': '병', '진행상태': '보류' }]).rows;
-  const tp = T.buildToday(todayRows, pr.tasks, '2026-10-30');
+  const tp = TK.buildToday(todayRows, pr.tasks, '2026-10-30');
   const g = (n) => tp.find((p) => p.name === n);
   eq('오늘 심사: 정/부 구분, 보류 제외', [g('갑').audits.map((a) => a.role), g('을').audits.map((a) => a.role), g('병').audits.length], [['정'], ['부'], 0]);
   eq('오늘 할일: 지연이 먼저, 내일·지난 완료 건은 제외', g('갑').tasks.map((t) => [t.title, t.late]), [['지연된 일', 3], ['보고서 작성', 0]]);
