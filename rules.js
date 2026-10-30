@@ -40,6 +40,8 @@
     region: ['지역'],
     status: ['진행상태', '상태'],
     farms: ['표본어가수', '표본어가', '표본어가수(곳)'],
+    reg: ['등록일'],      // 지원팀이 일정을 등록한 날 (선택)
+    changed: ['변경일'],  // 일정을 마지막으로 바꾼 날 (선택)
   };
 
   const pad = (n) => String(n).padStart(2, '0');
@@ -134,10 +136,12 @@
       let key = `${date}|${company}|${lead}`;
       if (seenKeys[key]) key += `#${++seenKeys[key]}`; else seenKeys[key] = 1;
 
+      const isoOf = (v) => { const d = parseDate(v); return d ? isoDate(d.y, d.m, d.d) : ''; };
       const subs = splitNames(pick('sub')).filter((s) => s !== lead);
       rows.push({
         key, y: dt.y, m: dt.m, d: dt.d, date, company, field, lead,
         subs: [...new Set(subs)], region: clean(pick('region')), status: st.status, farms, srcRow,
+        regDate: isoOf(pick('reg')), changedDate: isoOf(pick('changed')),
       });
     });
     return { rows, warnings, hasFarmsColumn };

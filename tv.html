@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>심사 현황판</title>
-<link rel="stylesheet" href="tv.css?v=20261030a">
+<link rel="stylesheet" href="tv.css?v=20261030b">
 </head>
 <body>
 <div class="board">
@@ -35,6 +35,15 @@
         <div class="key"><span class="ic a">▶</span>심사 <span class="ic l">!</span>지연 <span class="ic d">□</span>오늘 마감 <span class="ic ok">✓</span>완료</div>
       </div>
       <div id="people" class="people"></div>
+    </div>
+  </section>
+
+  <!-- 화면 6: 배정 확인 대기 -->
+  <section class="slide col" id="s6" aria-label="배정 확인 대기">
+    <div id="ackTiles" class="checks four"></div>
+    <div class="ack-grid">
+      <div class="panel"><h2>배정 확인 대기 <small id="n-ack"></small></h2><ul id="l-ack" class="plain ack"></ul></div>
+      <div class="panel"><h2>심사원별 미확인</h2><ul id="l-ackp" class="plain"></ul></div>
     </div>
   </section>
 
@@ -89,10 +98,12 @@
     <span id="updated"></span>
   </footer>
 </div>
-<script src="rules.js?v=20261030a"></script>
-<script src="sample.js?v=20261030a"></script>
-<script src="tasks.js?v=20261030a"></script>
-<script src="check.js?v=20261030a"></script>
-<script src="tv.js?v=20261030a"></script>
+<script src="rules.js?v=20261030b"></script>
+<script src="sample.js?v=20261030b"></script>
+<script src="tasks.js?v=20261030b"></script>
+<script src="check.js?v=20261030b"></script>
+<script src="ack.js?v=20261030b"></script>
+<script src="data.js?v=20261030b"></script>
+<script src="tv.js?v=20261030b"></script>
 </body>
 </html>

@@ -115,6 +115,15 @@ h2 small { color: var(--accent); font-weight: 700; font-size: 1.2rem; margin-lef
 .tag2.red { color: var(--red); } .tag2.orange { color: var(--orange); } .tag2.blue { color: var(--blue); } .tag2.muted { color: var(--muted); }
 .okline { color: var(--ok); font-size: 1.3rem; padding: .6rem 0; }
 
+/* 화면 6: 배정 확인 대기 */
+.checks.four { grid-template-columns: repeat(4, 1fr); }
+.ack-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 2.2fr 1fr; gap: 1.2rem; }
+.ack-grid .panel { min-height: 0; overflow: hidden; }
+.ack-grid .plain { flex: 1; min-height: 0; overflow: hidden; }
+.ack-grid .plain li { font-size: 1.2rem; padding: .4rem 0; }
+.plain .lv { flex: 0 0 4.2rem; text-align: center; font-size: 1rem; font-weight: 800; border-radius: .4rem; padding: .05rem 0; }
+.lv.red { background: var(--red); color: #1a0505; } .lv.orange { background: var(--orange); color: #241500; } .lv.normal { background: #2c4439; color: var(--accent); }
+
 /* 화면 4: 연간 월별 부하 */
 .heat-panel { flex: 3.4; }
 .crowd { flex: 1; }
@@ -180,7 +189,7 @@ h2 small { color: var(--accent); font-weight: 700; font-size: 1.2rem; margin-lef
   .people { grid-template-columns: 1fr !important; grid-auto-rows: auto; }
   .cards { grid-auto-rows: auto; }
   .mbars { height: 9rem; } .kanban { grid-template-columns: 1fr; } .kc ul { overflow: visible; }
-  .checks { grid-template-columns: repeat(2, 1fr); } .chk-grid { grid-template-columns: 1fr; }
+  .checks, .checks.four { grid-template-columns: repeat(2, 1fr); } .ack-grid { grid-template-columns: 1fr; } .chk-grid { grid-template-columns: 1fr; }
   .heat { overflow-x: auto; } .hr { min-width: 34rem; } .hr > div { font-size: .9rem; } .hr .nm { font-size: 1rem; }
   .cd { min-height: 4rem; }
 }

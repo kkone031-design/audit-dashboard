@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>내 배정 확인</title>
+<link rel="stylesheet" href="my.css?v=20261030b">
+</head>
+<body>
+<header class="top">
+  <h1>내 배정 확인</h1>
+  <label class="who">심사원 <select id="who" aria-label="심사원 선택"></select></label>
+</header>
+<p class="demo" id="demo"></p>
+
+<main>
+  <section id="summary" class="summary" aria-live="polite"></section>
+  <section>
+    <h2>확인이 필요한 배정 <small id="n-pend"></small></h2>
+    <div id="pending"></div>
+  </section>
+  <section>
+    <h2>오늘 할 일</h2>
+    <ul id="today" class="list"></ul>
+  </section>
+  <section>
+    <details id="done-box">
+      <summary>확인 완료한 배정 <small id="n-done"></small></summary>
+      <ul id="done" class="list"></ul>
+    </details>
+  </section>
+</main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<footer><button id="reset" class="link">시안 확인 기록 초기화</button></footer>
+
+<script src="rules.js?v=20261030b"></script>
+<script src="sample.js?v=20261030b"></script>
+<script src="tasks.js?v=20261030b"></script>
+<script src="ack.js?v=20261030b"></script>
+<script src="data.js?v=20261030b"></script>
+<script src="my.js?v=20261030b"></script>
+</body>
+</html>

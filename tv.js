@@ -1,7 +1,7 @@
 /* TV 현황판. 맨데이 계산은 rules.js, 할일 계산은 tasks.js를 사용합니다. */
 (function () {
   'use strict';
-  const R = AuditRules, T = AuditTasks, C = AuditCheck;
+  const R = AuditRules, T = AuditTasks, C = AuditCheck, AK = AuditAck;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
@@ -10,24 +10,19 @@
   const params = new URLSearchParams(location.search);
   const ROTATE_SEC = Math.max(5, +params.get('sec') || 20);   // 화면 전환 간격(초) ?sec=30
   const REFRESH_SEC = 60;                                      // 데이터 다시 읽는 간격
-  const SLIDES = ['s1', 's2', 's5', 's3', 's4'];   // 화면 순서
+  const SLIDES = ['s1', 's6', 's2', 's5', 's3', 's4'];   // 화면 순서
   const MAX_TASKS = 4;                                         // 심사원 카드 1장에 보여 줄 항목 수
 
-  /* ★ 연동 지점 ─ 지금은 내장 샘플입니다. SharePoint 목록·DB 등으로 바꿀 때 아래 두 함수와 DEMO만 고치면 됩니다.
-     fetchRecords: 심사 일정  (엑셀 업로드와 같은 열 이름의 객체 배열)
-     fetchTasks  : 심사원 할일 (열: 기한, 담당자, 할일, 업체명, 상태[대기/진행/완료])
-     fetchPlan   : 연말에 확정한 연간 배정표 (열: 업체명, 인증분야, 정심사원, 부심사원, 지역, 배정월) */
-  const DEMO = true;                     // true면 오늘 날짜를 샘플 기준일로 고정
-  async function fetchRecords() { return AuditSample.generate(); }
-  async function fetchTasks() { return AuditSample.generateTasks(); }
-  async function fetchPlan() { return AuditSample.generatePlan(); }
+  /* 데이터 연동은 data.js에서 합니다 (지금은 샘플 + 이 브라우저 저장 시안) */
+  const DEMO = AuditData.DEMO;
+  const { fetchRecords, fetchTasks, fetchPlan, fetchAcks } = AuditData;
 
-  let rows = [], tasks = [], plan = [];
+  let rows = [], tasks = [], plan = [], acks = [];
   let slide = 0, timer = null;
 
   const ymd = (d) => R.isoDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
   const live = () => rows.filter((r) => r.status !== '보류');
-  const refDate = () => (DEMO ? new Date(AuditSample.TODAY + 'T09:00:00') : new Date());
+  const refDate = () => AuditData.today();
 
   function pickPeriod(now) {
     const ys = rows.map((r) => r.y);
@@ -88,6 +83,27 @@
 
     /* 화면 2: 달력 */
     renderCal(y, m, now, live().filter((r) => r.y === y && r.m === m));
+
+    /* 화면 6: 배정 확인 대기 */
+    const ck = AK.checkAcks(rows, acks, today);
+    const pend = ck.pending;
+    const redN = pend.filter((p) => p.level === 'red').length;
+    const chgN = pend.filter((p) => p.reason === 'changed').length;
+    const rate = ck.total ? Math.round((ck.acked / ck.total) * 100) : 100;
+    const atile = (label, n, cls, suffix) => `<div class="tile ${n ? cls : 'ok'}"><b>${n ? n + (suffix || '') : '✔'}</b><span>${label}</span></div>`;
+    $('ackTiles').innerHTML = atile('확인 대기', pend.length, redN ? 'red' : 'orange') + atile('지연·긴급', redN, 'red') + atile('일정 변경 후 재확인', chgN, 'orange')
+      + `<div class="tile ${rate >= 95 ? 'ok' : rate >= 80 ? 'orange' : 'red'}"><b>${rate}%</b><span>확인 완료율 (${ck.acked}/${ck.total})</span></div>`;
+    const lvLabel = (p) => (p.reason === 'changed' && p.level !== 'red' ? '변경' : p.level === 'red' ? (p.daysToAudit <= AK.ACK.urgentBefore ? '긴급' : '지연') : p.level === 'orange' ? '주의' : '신규');
+    $('n-ack').textContent = pend.length ? `${pend.length}건` : '';
+    const MAXA = 15;
+    $('l-ack').innerHTML = pend.length
+      ? pend.slice(0, MAXA).map((p) => `<li><span class="lv ${p.level}">${lvLabel(p)}</span><span class="who">${esc(p.auditor)} <span class="fd">${p.role === '정' ? '정심사' : '부심사'}</span></span><span class="co">${esc(p.company)} <span class="fd">${+p.date.slice(5, 7)}/${+p.date.slice(8)} · D-${p.daysToAudit}</span></span><span class="tag2 ${p.level === 'red' ? 'red' : p.level === 'orange' ? 'orange' : 'muted'}">${p.reason === 'changed' ? '일정 변경 · 재확인' : p.waitDays ? `등록 후 ${p.waitDays}일 · 미확인` : '방금 등록'}</span></li>`).join('') + (pend.length > MAXA ? `<li class="none">외 ${pend.length - MAXA}건</li>` : '')
+      : '<li class="okline">✔ 모든 배정을 확인했습니다</li>';
+    const everyone = [...new Set(rows.flatMap((r) => [r.lead, ...r.subs]))].sort((a, b) => a.localeCompare(b, 'ko'));
+    const per = everyone.map((n) => { const mine = pend.filter((p) => p.auditor === n); return { n, cnt: mine.length, red: mine.some((p) => p.level === 'red'), max: Math.max(0, ...mine.map((p) => p.waitDays)) }; })
+      .filter((x) => x.cnt).sort((a, b) => b.red - a.red || b.cnt - a.cnt || b.max - a.max);
+    $('l-ackp').innerHTML = (per.length ? per.map((x) => `<li><span class="who">${esc(x.n)}</span><span class="co"></span><span class="tag2 ${x.red ? 'red' : 'orange'}">미확인 ${x.cnt}건${x.max ? ` · 최장 ${x.max}일` : ''}</span></li>`).join('') : '')
+      + `<li class="okline">✔ 모두 확인: ${esc(everyone.filter((n) => !per.some((x) => x.n === n)).join(', ') || '없음')}</li>`;
 
     /* 화면 2: 점검 필요 */
     const rc = C.reconcile(plan, rows, today);
@@ -194,8 +210,8 @@
 
   async function refresh() {
     try {
-      const [rec, tk, pl] = await Promise.all([fetchRecords(), fetchTasks(), fetchPlan()]);
-      rows = R.parseRecords(rec).rows; tasks = T.parseTasks(tk).tasks; plan = C.parsePlan(pl).plan;
+      const [rec, tk, pl, ak] = await Promise.all([fetchRecords(), fetchTasks(), fetchPlan(), fetchAcks()]);
+      rows = R.parseRecords(rec).rows; tasks = T.parseTasks(tk).tasks; plan = C.parsePlan(pl).plan; acks = AK.parseAcks(ak).acks;
       render();
     } catch (e) { /* 실패 시 직전 화면 유지 */ }
   }
@@ -206,6 +222,7 @@
     if (e.key === 'ArrowRight') { show(slide + 1); startRotate(); } else if (e.key === 'ArrowLeft') { show(slide - 1); startRotate(); }
   });
   const only = +params.get('slide'); // ?slide=2 로 특정 화면 고정(확인용)
+  window.addEventListener('storage', (e) => { if (e.key === AuditData.ACK_KEY) refresh(); }); // 같은 브라우저의 다른 탭(심사원 화면 시안)에서 확인하면 바로 반영
   tickClock(); setInterval(tickClock, 1000);
   show(only >= 1 && only <= SLIDES.length ? only - 1 : 0); startRotate();
   refresh(); setInterval(refresh, REFRESH_SEC * 1000);

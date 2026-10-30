@@ -24,6 +24,9 @@
     };
   }
 
+  const hsh = (n) => ((Math.imul(n, 2654435761) >>> 0) / 4294967296); // 난수열을 건드리지 않는 결정적 값
+  const shiftIso = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+
   function generate() {
     const rand = rng(20260301);
     const ri = (a, b) => a + Math.floor(rand() * (b - a + 1));
@@ -75,12 +78,18 @@
           '진행상태': st,
           '표본어가 수': '',
         };
+        // 지원팀 등록일(앞으로의 예정 건은 최근 0~7일 사이에 등록), 일부는 등록 후 일정이 변경됨
+        if (st === '예정' && dateStr > TODAY) {
+          const changedFlag = hsh(seq + 99) > 0.95;
+          rec['등록일'] = shiftIso(TODAY, changedFlag ? -4 : -Math.floor(hsh(seq) * 8));
+          if (changedFlag) rec['변경일'] = shiftIso(TODAY, -(seq % 2));
+        } else rec['등록일'] = shiftIso(dateStr, -10);
         if (r.field === '수산' && rand() < 0.5) rec['표본어가 수'] = ri(2, 10);
         records.push(rec);
       }
     }
     // 일정 충돌 시연용: 김한결은 11/4에 이미 심사가 있음
-    records.push({ '심사일자': '2026-11-04', '업체명': '새솔농장 902호(가상)', '인증분야': '농산물', '정심사원': '김한결', '부심사원': '', '지역': '충남', '진행상태': '예정', '표본어가 수': '' });
+    records.push({ '심사일자': '2026-11-04', '업체명': '새솔농장 902호(가상)', '인증분야': '농산물', '정심사원': '김한결', '부심사원': '', '지역': '충남', '진행상태': '예정', '표본어가 수': '', '등록일': shiftIso(TODAY, -1) });
     return records;
   }
 
@@ -139,6 +148,25 @@
   }
   function S_OTHER(name) { return AUDITORS[(AUDITORS.indexOf(name) + 1) % AUDITORS.length]; }
 
+  /** 샘플 확인 기록: 대부분 등록 후 1~2일 안에 확인했고, 일부는 아직 미확인. 일정이 변경된 건은 변경 전에 한 확인만 있음 */
+  function generateAcks() {
+    const rows = R.parseRecords(generate()).rows;
+    const out = [];
+    rows.forEach((r, idx) => {
+      if (r.status !== '예정' || r.date <= TODAY) return;
+      [r.lead, ...r.subs].forEach((who, k) => {
+        const h = hsh(idx * 31 + k * 7 + 5);
+        const stale = !!r.changedDate;
+        if (!stale && h < 0.07) return;                                   // 미확인
+        if (stale && h < 0.5) return;                                     // 변경 건: 절반은 아예 미확인
+        const day = stale ? r.regDate : shiftIso(r.regDate, h > 0.55 ? 1 : 0);
+        if (day > TODAY) return;
+        out.push({ '심사일자': r.date, '업체명': r.company, '확인자': who, '확인일시': `${day} ${h > 0.5 ? '09' : '14'}:${String(Math.floor(h * 59)).padStart(2, '0')}` });
+      });
+    });
+    return out;
+  }
+
   /** 엑셀 양식(샘플 다운로드)용 예시 3줄 */
   const TEMPLATE_HEADERS = ['심사일자', '업체명', '인증분야', '정심사원', '부심사원', '지역', '진행상태', '표본어가 수'];
   const TEMPLATE_ROWS = [
@@ -147,5 +175,5 @@
     ['2026-03-20', '예시식품', '유기가공', '이서연', '최민재', '충남', '보류', ''],
   ];
 
-  return { YEAR, TODAY, AUDITORS, generate, generateTasks, generatePlan, TEMPLATE_HEADERS, TEMPLATE_ROWS };
+  return { YEAR, TODAY, AUDITORS, generate, generateTasks, generatePlan, generateAcks, TEMPLATE_HEADERS, TEMPLATE_ROWS };
 }));

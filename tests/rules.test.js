@@ -148,6 +148,23 @@
   const sc = CK.stageCounts(cs);
   eq('월별 단계 건수(3월): 서류1·발급1, 지연1', [sc[2].counts, sc[2].total, sc[2].overdue], [[0, 0, 1, 0, 1], 2, 1]);
 
+  // 11) 배정 확인 (ack.js)
+  const AK = typeof require === 'function' ? require('../ack.js') : window.AuditAck;
+  const mk = (o) => R.parseRecords([Object.assign({ '심사일자': '2026-11-20', '업체명': 'K농장', '인증분야': '농산물', '정심사원': '갑', '부심사원': '을', '진행상태': '예정', '등록일': '2026-10-30' }, o)]).rows[0];
+  const chk = (row, acks, today) => AK.checkAcks([row], AK.parseAcks(acks).acks, today || '2026-10-30');
+  const pend = chk(mk({}), []);
+  eq('등록 당일: 정·부 모두 미확인이지만 아직 경고 아님(normal)', [pend.pending.map((p) => p.auditor + p.role), pend.pending.map((p) => p.level), pend.total, pend.acked], [['갑정', '을부'], ['normal', 'normal'], 2, 0]);
+  const one = chk(mk({}), [{ '심사일자': '2026-11-20', '업체명': 'K농장', '확인자': '갑', '확인일시': '2026-10-30 10:00' }]);
+  eq('정심사원만 확인하면 부심사원만 대기', [one.pending.map((p) => p.auditor), one.acked], [['을'], 1]);
+  eq('등록 1일 경과=주황, 2일 경과=빨강', [chk(mk({ '등록일': '2026-10-29' }), []).pending[0].level, chk(mk({ '등록일': '2026-10-28' }), []).pending[0].level], ['orange', 'red']);
+  eq('심사 3일 전까지 미확인이면 등록 직후라도 긴급(red)', chk(mk({ '심사일자': '2026-11-02' }), []).pending[0].level, 'red');
+  const chg = chk(mk({ '등록일': '2026-10-20', '변경일': '2026-10-29' }), [{ '심사일자': '2026-11-20', '업체명': 'K농장', '확인자': '갑', '확인일시': '2026-10-21 09:00' }]);
+  eq('변경 후에는 이전 확인이 무효 → 재확인 필요', chg.pending.filter((p) => p.auditor === '갑').map((p) => [p.reason, p.waitDays]), [['changed', 1]]);
+  eq('변경 이후에 한 확인은 유효', chk(mk({ '등록일': '2026-10-20', '변경일': '2026-10-29' }), [{ '심사일자': '2026-11-20', '업체명': 'K농장', '확인자': '갑', '확인일시': '2026-10-29 15:00' }]).pending.map((p) => p.auditor), ['을']);
+  eq('완료·보류·지난 일정은 확인 대상 아님', [chk(mk({ '진행상태': '완료' }), []).total, chk(mk({ '진행상태': '보류' }), []).total, chk(mk({ '심사일자': '2026-10-01' }), []).total], [0, 0, 0]);
+  eq('등록일이 없으면 오늘 등록으로 보고 경고하지 않음', chk(mk({ '등록일': '' }), []).pending.map((p) => p.level), ['normal', 'normal']);
+  eq('긴급·지연이 먼저, 심사일 임박한 순', AK.checkAcks([mk({ '업체명': 'A', '심사일자': '2026-12-01', '부심사원': '' }), mk({ '업체명': 'B', '심사일자': '2026-11-01', '부심사원': '' }), mk({ '업체명': 'C', '심사일자': '2026-12-05', '등록일': '2026-10-25', '부심사원': '' })], [], '2026-10-30').pending.map((p) => p.company), ['B', 'C', 'A']);
+
   const text = out.join('\n') + `\n\n${out.length - fail}/${out.length} 통과`;
   if (typeof document !== 'undefined') { document.getElementById('out').textContent = text; document.title = fail ? 'FAIL' : 'PASS'; }
   else { console.log(text); if (fail) process.exit(1); }
