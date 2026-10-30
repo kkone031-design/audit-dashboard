@@ -17,8 +17,36 @@
     <div class="clock"><div id="clock-time"></div><div id="clock-date"></div></div>
   </header>
 
-  <section class="slide on" id="s1" aria-label="심사원별 맨데이">
-    <div class="load">
+  <!-- 화면 1: 오늘 -->
+  <section class="slide on" id="s1" aria-label="오늘의 심사 일정과 할일">
+    <div class="left">
+      <div class="panel grow">
+        <h2>오늘 심사 <small id="today-n"></small></h2>
+        <div id="today" class="cards"></div>
+      </div>
+      <div class="panel">
+        <h2>앞으로 7일 <small id="week-n"></small></h2>
+        <ul id="week" class="plain"></ul>
+      </div>
+    </div>
+    <div class="panel right">
+      <div class="panel-head">
+        <h2>심사원별 오늘의 할일</h2>
+        <div class="key"><span class="ic a">▶</span>심사 <span class="ic l">!</span>지연 <span class="ic d">□</span>오늘 마감 <span class="ic ok">✓</span>완료</div>
+      </div>
+      <div id="people" class="people"></div>
+    </div>
+  </section>
+
+  <!-- 화면 2: 월간 달력 -->
+  <section class="slide" id="s2" aria-label="월간 심사 일정">
+    <div id="cal" class="cal"></div>
+  </section>
+
+  <!-- 화면 3: 맨데이 -->
+  <section class="slide col" id="s3" aria-label="심사원별 맨데이">
+    <div id="kpis" class="kpis"></div>
+    <div class="panel load">
       <div class="panel-head">
         <h2>심사원별 월 맨데이</h2>
         <div class="key"><i class="k ok"></i>정상 <i class="k orange"></i>18 이상 <i class="k red"></i>20 초과</div>
@@ -26,21 +54,6 @@
       <div id="axis" class="axis"></div>
       <div id="rows" class="rows"></div>
     </div>
-    <aside class="side">
-      <div id="kpis" class="kpis"></div>
-      <div class="list">
-        <h2>오늘 심사 <small id="today-n"></small></h2>
-        <ul id="today"></ul>
-      </div>
-      <div class="list">
-        <h2>앞으로 7일 <small id="week-n"></small></h2>
-        <ul id="week"></ul>
-      </div>
-    </aside>
-  </section>
-
-  <section class="slide" id="s2" aria-label="월간 심사 일정">
-    <div id="cal" class="cal"></div>
   </section>
 
   <footer class="foot">
@@ -50,6 +63,7 @@
 </div>
 <script src="rules.js"></script>
 <script src="sample.js"></script>
+<script src="tasks.js"></script>
 <script src="tv.js"></script>
 </body>
 </html>

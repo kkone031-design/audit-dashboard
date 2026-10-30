@@ -1,26 +1,31 @@
-/* TV 현황판. 계산은 rules.js를 그대로 사용합니다. */
+/* TV 현황판. 맨데이 계산은 rules.js, 할일 계산은 tasks.js를 사용합니다. */
 (function () {
   'use strict';
-  const R = AuditRules;
+  const R = AuditRules, T = AuditTasks;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
   const DOW = ['일', '월', '화', '수', '목', '금', '토'];
   const COLORS = ['#6cb6ff', '#7fd1ae', '#c49bff', '#ffd166', '#ff9e7d', '#5ee0e0', '#f78fb3', '#b5d96a', '#9fb4ff', '#e0a96d'];
   const params = new URLSearchParams(location.search);
-  const ROTATE_SEC = Math.max(5, +params.get('sec') || 20);   // 슬라이드 전환 간격(초) ?sec=30
+  const ROTATE_SEC = Math.max(5, +params.get('sec') || 20);   // 화면 전환 간격(초) ?sec=30
   const REFRESH_SEC = 60;                                      // 데이터 다시 읽는 간격
-  const SLIDES = ['s1', 's2'];
+  const SLIDES = ['s1', 's2', 's3'];
+  const MAX_TASKS = 4;                                         // 심사원 카드 1장에 보여 줄 항목 수
 
-  /* ★ 연동 지점: 지금은 내장 샘플. SharePoint 목록·DB 등으로 바꿀 때 이 함수만 고치면 됩니다.
-     반환 형식: 엑셀 업로드와 같은 열 이름을 가진 객체 배열 */
+  /* ★ 연동 지점 ─ 지금은 내장 샘플입니다. SharePoint 목록·DB 등으로 바꿀 때 아래 두 함수와 DEMO만 고치면 됩니다.
+     fetchRecords: 심사 일정  (엑셀 업로드와 같은 열 이름의 객체 배열)
+     fetchTasks  : 심사원 할일 (열: 기한, 담당자, 할일, 업체명, 상태[대기/진행/완료]) */
+  const DEMO = true;                     // true면 오늘 날짜를 샘플 기준일로 고정
   async function fetchRecords() { return AuditSample.generate(); }
+  async function fetchTasks() { return AuditSample.generateTasks(); }
 
-  let rows = [];
+  let rows = [], tasks = [];
   let slide = 0, timer = null;
 
   const ymd = (d) => R.isoDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
   const live = () => rows.filter((r) => r.status !== '보류');
+  const refDate = () => (DEMO ? new Date(AuditSample.TODAY + 'T09:00:00') : new Date());
 
   function pickPeriod(now) {
     const ys = rows.map((r) => r.y);
@@ -31,20 +36,62 @@
   }
 
   function render() {
-    const now = new Date();
-    if (!rows.length) { $('rows').innerHTML = '<p class="empty">표시할 심사 데이터가 없습니다.</p>'; return; }
+    const now = refDate();
+    if (!rows.length) { $('today').innerHTML = '<p class="none">표시할 심사 데이터가 없습니다.</p>'; return; }
     const { y, m } = pickPeriod(now);
+    const today = ymd(now);
     const assigns = R.buildAssignments(rows, { includeHold: false, farmOverrides: new Set() });
     const sum = R.summarize(assigns, y, m).sort((a, b) => b.manday - a.manday || a.name.localeCompare(b.name, 'ko'));
+    const mdOf = new Map(sum.map((s) => [s.name, s]));
     $('period').textContent = `${y}년 ${m}월`;
 
-    /* 경고 */
+    /* 상단: 과부하는 작은 배지로 */
     const warn = sum.filter((s) => s.level !== 'ok');
     $('alert').innerHTML = warn.length
-      ? warn.map((s) => `<span class="tag ${s.level}">${s.level === 'red' ? '⚠ ' : ''}${esc(s.name)} ${fmt(s.manday)}</span>`).join('')
-      : '<span class="calm">✔ 과부하 심사원 없음</span>';
+      ? `<span>맨데이 주의</span>` + warn.map((s) => `<span class="tag ${s.level}">${esc(s.name)} ${fmt(s.manday)}</span>`).join('')
+      : '<span>맨데이 주의 대상 없음</span>';
 
-    /* 막대 */
+    /* 화면 1-좌: 오늘 심사, 앞으로 7일 */
+    const td = live().filter((r) => r.date === today);
+    $('today-n').textContent = td.length ? `${td.length}건` : '';
+    const MAXC = 5;
+    $('today').innerHTML = td.length
+      ? td.slice(0, MAXC).map((r) => `<div class="card ${r.status === '완료' ? 'done' : ''}"><div class="co">${esc(r.company)}<span class="pill ${r.status === '예정' ? 'plan' : ''}">${esc(r.status)}</span></div><div class="who"><b>정 ${esc(r.lead)}</b>${r.subs.length ? ` · 부 ${esc(r.subs.join(', '))}` : ''}</div><div class="meta">${esc(r.field)}${r.region ? ' · ' + esc(r.region) : ''}</div></div>`).join('') + (td.length > MAXC ? `<div class="none">외 ${td.length - MAXC}건</div>` : '')
+      : '<p class="none">오늘 예정된 심사가 없습니다</p>';
+    const end = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7));
+    const wk = live().filter((r) => r.date > today && r.date <= end).sort((a, b) => a.date.localeCompare(b.date));
+    $('week-n').textContent = wk.length ? `${wk.length}건` : '';
+    $('week').innerHTML = wk.length
+      ? wk.slice(0, 4).map((r) => `<li><span class="d">${r.m}/${r.d}(${DOW[new Date(r.y, r.m - 1, r.d).getDay()]})</span><span class="who">${esc(r.lead)}</span><span class="co">${esc(r.company)}</span><span class="fd">${esc(r.field)}</span></li>`).join('') + (wk.length > 4 ? `<li class="none">외 ${wk.length - 4}건</li>` : '')
+      : '<li class="none">예정된 심사가 없습니다</li>';
+
+    /* 화면 1-우: 심사원별 오늘의 할일 */
+    const people = T.buildToday(rows, tasks, today);
+    $('people').style.gridTemplateColumns = `repeat(${people.length > 8 ? 3 : 2}, minmax(0, 1fr))`;
+    $('people').innerHTML = people.map((p) => {
+      const items = [
+        ...p.audits.map((a) => ({ cls: 'audit', ic: '<span class="ic a">▶</span>', t: `${esc(a.company)} <small>${a.role === '정' ? '정심사' : '부심사'}</small>`, em: '' })),
+        ...p.tasks.map((t) => t.done
+          ? { cls: 'done', ic: '<span class="ic ok">✓</span>', t: `${esc(t.title)}${t.company ? ` <small>${esc(t.company)}</small>` : ''}`, em: '' }
+          : t.late > 0
+            ? { cls: 'late', ic: '<span class="ic l">!</span>', t: `${esc(t.title)}${t.company ? ` <small>${esc(t.company)}</small>` : ''}`, em: `지연 ${t.late}일` }
+            : { cls: 'due', ic: '<span class="ic d">□</span>', t: `${esc(t.title)}${t.company ? ` <small>${esc(t.company)}</small>` : ''}`, em: '오늘 마감' }),
+      ];
+      const shown = items.length > MAX_TASKS ? items.slice(0, MAX_TASKS - 1) : items;
+      const s = mdOf.get(p.name);
+      const md = s ? `<span class="md ${s.level === 'ok' ? '' : s.level}">맨데이 ${fmt(s.manday)}</span>` : '';
+      return `<div class="pc${items.length ? ' busy' : ''}"><div class="ph"><span class="pn">${esc(p.name)}</span>${md}</div><ul class="tl">` +
+        (shown.length ? shown.map((i) => `<li class="${i.cls}">${i.ic}<span class="t">${i.t}</span>${i.em ? `<em>${i.em}</em>` : ''}</li>`).join('') + (items.length > shown.length ? `<li class="more">외 ${items.length - shown.length}건</li>` : '') : '<li class="none">오늘 등록된 할일 없음</li>') + '</ul></div>';
+    }).join('');
+
+    /* 화면 2: 달력 */
+    renderCal(y, m, now, live().filter((r) => r.y === y && r.m === m));
+
+    /* 화면 3: 맨데이 */
+    const mrows = live().filter((r) => r.y === y && r.m === m);
+    const done = mrows.filter((r) => r.status === '완료').length;
+    $('kpis').innerHTML = [['이번 달 심사', mrows.length, ''], ['완료', done, ''], ['예정', mrows.length - done, ''], ['맨데이 주의 인원', warn.length, warn.length ? 'warn' : '']]
+      .map(([t, v, c]) => `<div class="kpi ${c}"><b>${v}</b><span>${t}</span></div>`).join('');
     const yMax = Math.max(24, Math.ceil(Math.max(0, ...sum.map((s) => s.manday)) / 4) * 4 + 2);
     const pct = (v) => (v / yMax) * 100;
     $('axis').innerHTML = `<span></span><div class="ticks"><span class="t o" style="left:${pct(R.WARN.orange)}%">${R.WARN.orange}</span><span class="t r" style="left:${pct(R.WARN.red)}%">${R.WARN.red}</span></div><span></span>`;
@@ -55,25 +102,7 @@
         <div class="val"><b>${fmt(s.manday)}</b><span>정 ${s.lead} · 부 ${s.sub}<br>완료 ${s.done} · 예정 ${s.planned}</span></div>
       </div>`).join('') : '<p class="empty">이 달에 집계할 심사가 없습니다.</p>';
 
-    /* KPI */
-    const mrows = live().filter((r) => r.y === y && r.m === m);
-    const done = mrows.filter((r) => r.status === '완료').length;
-    $('kpis').innerHTML = [['이번 달 심사', mrows.length, ''], ['완료', done, ''], ['예정', mrows.length - done, ''], ['경고 인원', warn.length, warn.length ? 'warn' : '']]
-      .map(([t, v, c]) => `<div class="kpi ${c}"><b>${v}</b><span>${t}</span></div>`).join('');
-
-    /* 오늘 / 앞으로 7일 */
-    const today = ymd(now);
-    const end = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7));
-    const li = (r, showDate) => `<li>${showDate ? `<span class="d">${r.m}/${r.d}(${DOW[new Date(r.y, r.m - 1, r.d).getDay()]})</span>` : ''}<span class="who">${esc(r.lead)}${r.subs.length ? ` <span class="fd">+${esc(r.subs.join(','))}</span>` : ''}</span><span class="co">${esc(r.company)}</span><span class="fd">${esc(r.field)}</span></li>`;
-    const td = live().filter((r) => r.date === today);
-    $('today-n').textContent = td.length ? `${td.length}건` : '';
-    $('today').innerHTML = td.length ? td.slice(0, 6).map((r) => li(r, false)).join('') + (td.length > 6 ? `<li class="none">외 ${td.length - 6}건</li>` : '') : '<li class="none">오늘 예정된 심사가 없습니다</li>';
-    const wk = live().filter((r) => r.date > today && r.date <= end).sort((a, b) => a.date.localeCompare(b.date));
-    $('week-n').textContent = wk.length ? `${wk.length}건` : '';
-    $('week').innerHTML = wk.length ? wk.slice(0, 7).map((r) => li(r, true)).join('') + (wk.length > 7 ? `<li class="none">외 ${wk.length - 7}건</li>` : '') : '<li class="none">예정된 심사가 없습니다</li>';
-
-    renderCal(y, m, now, mrows);
-    $('updated').textContent = `데이터 갱신 ${now.toTimeString().slice(0, 8)}`;
+    $('updated').textContent = DEMO ? `샘플 데이터 · 기준일 ${today}` : `데이터 갱신 ${new Date().toTimeString().slice(0, 8)}`;
   }
 
   function renderCal(y, m, now, mrows) {
@@ -98,8 +127,9 @@
 
   function tickClock() {
     const n = new Date();
+    const d = DEMO ? refDate() : n;
     $('clock-time').textContent = n.toTimeString().slice(0, 5);
-    $('clock-date').textContent = `${n.getFullYear()}.${n.getMonth() + 1}.${n.getDate()} (${DOW[n.getDay()]})`;
+    $('clock-date').textContent = `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()} (${DOW[d.getDay()]})`;
   }
 
   function show(i) {
@@ -113,7 +143,11 @@
   }
 
   async function refresh() {
-    try { rows = R.parseRecords(await fetchRecords()).rows; render(); } catch (e) { /* 실패 시 직전 화면 유지 */ }
+    try {
+      const [rec, tk] = await Promise.all([fetchRecords(), fetchTasks()]);
+      rows = R.parseRecords(rec).rows; tasks = T.parseTasks(tk).tasks;
+      render();
+    } catch (e) { /* 실패 시 직전 화면 유지 */ }
   }
 
   $('dots').innerHTML = SLIDES.map((_, i) => `<button class="dot" aria-label="화면 ${i + 1}"></button>`).join('');
@@ -121,8 +155,8 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowRight') { show(slide + 1); startRotate(); } else if (e.key === 'ArrowLeft') { show(slide - 1); startRotate(); }
   });
+  const only = +params.get('slide'); // ?slide=2 로 특정 화면 고정(확인용)
   tickClock(); setInterval(tickClock, 1000);
-  show(0); startRotate();
+  show(only >= 1 && only <= SLIDES.length ? only - 1 : 0); startRotate();
   refresh(); setInterval(refresh, REFRESH_SEC * 1000);
-  setInterval(() => { if (rows.length) render(); }, 60 * 1000); // 날짜가 바뀌면 오늘 목록 갱신
 })();

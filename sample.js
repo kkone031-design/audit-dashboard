@@ -82,6 +82,28 @@
     return records;
   }
 
+
+  /** 샘플 할일: 최근 완료된 심사의 보고서 작성, 임박한 심사의 준비 서류 검토, 월말 실적 제출 */
+  function generateTasks() {
+    const rand = rng(777);
+    const shift = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+    const rows = R.parseRecords(generate()).rows;
+    const out = [];
+    const mk = (due, owner, title, company, status) => out.push({ '기한': due, '담당자': owner, '할일': title, '업체명': company, '상태': status });
+    rows.forEach((r) => {
+      if (r.status === '완료' && r.date <= TODAY && r.date >= shift(TODAY, -14)) {
+        const due = shift(r.date, 4);
+        const st = due >= TODAY ? (due === TODAY && rand() < 0.4 ? '완료' : rand() < 0.5 ? '진행' : '대기') : (rand() < 0.75 ? '완료' : '대기');
+        mk(due, r.lead, '심사보고서 작성', r.company, st);
+      }
+      if (r.status === '예정' && r.date > TODAY && r.date <= shift(TODAY, 4)) mk(shift(r.date, -1) < TODAY ? TODAY : shift(r.date, -1), r.lead, '심사 준비(서류 검토)', r.company, '대기');
+    });
+    mk(TODAY, '정하은', '월간 심사실적 제출', '', '진행');
+    mk(TODAY, '윤태오', '월간 심사실적 제출', '', '대기');
+    mk(TODAY, '조예린', '보완조치 확인 회신', '', '진행');
+    return out;
+  }
+
   /** 엑셀 양식(샘플 다운로드)용 예시 3줄 */
   const TEMPLATE_HEADERS = ['심사일자', '업체명', '인증분야', '정심사원', '부심사원', '지역', '진행상태', '표본어가 수'];
   const TEMPLATE_ROWS = [
@@ -90,5 +112,5 @@
     ['2026-03-20', '예시식품', '유기가공', '이서연', '최민재', '충남', '보류', ''],
   ];
 
-  return { YEAR, TODAY, AUDITORS, generate, TEMPLATE_HEADERS, TEMPLATE_ROWS };
+  return { YEAR, TODAY, AUDITORS, generate, generateTasks, TEMPLATE_HEADERS, TEMPLATE_ROWS };
 }));
