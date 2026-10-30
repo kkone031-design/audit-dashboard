@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>심사원 맨데이 현황</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <h1>심사원 월간 심사·맨데이 현황</h1>
+  <p class="sub">친환경인증 심사원별 월간 심사 건수와 맨데이를 확인하고 과부하 심사원을 찾습니다. 업로드한 파일은 서버로 전송되지 않고 이 브라우저에서만 처리됩니다.</p>
+</header>
+
+<main>
+  <section class="card controls" aria-label="데이터 불러오기">
+    <div class="row">
+      <label class="btn primary" for="file">엑셀 업로드 (.xlsx / .xls)</label>
+      <input id="file" type="file" accept=".xlsx,.xls" hidden>
+      <button id="btn-sample" class="btn">샘플 데이터 불러오기</button>
+      <button id="btn-template" class="btn">샘플 엑셀 양식 다운로드</button>
+      <label class="chk"><input id="chk-hold" type="checkbox"> 보류 건도 집계에 포함</label>
+    </div>
+    <div id="msg" class="msg" role="status" aria-live="polite"></div>
+    <details id="warn-box" hidden><summary id="warn-sum"></summary><ul id="warn-list"></ul></details>
+  </section>
+
+  <div id="app" hidden>
+    <section class="card controls" aria-label="조회 기간">
+      <div class="row">
+        <label>연도 <select id="sel-year"></select></label>
+        <label>월 <select id="sel-month"></select></label>
+        <button id="btn-export" class="btn primary push">현재 보기 엑셀로 내려받기</button>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="h-warn">
+      <h2 id="h-warn">과부하 경고</h2>
+      <div id="warn-summary"></div>
+      <p class="legend"><span class="dot red"></span>월 맨데이 20 초과 <span class="dot orange"></span>18 이상 20 이하</p>
+    </section>
+
+    <section class="card" aria-labelledby="h-table">
+      <h2 id="h-table">심사원별 현황 <small id="t-period"></small></h2>
+      <div class="scroll"><table id="tbl" class="grid"></table></div>
+      <p class="hint">머리글을 누르면 정렬되고, 행을 누르면 아래 달력에 해당 심사원의 일정이 표시됩니다.</p>
+    </section>
+
+    <section class="card" id="suisan-card" hidden aria-labelledby="h-suisan">
+      <h2 id="h-suisan">수산 표본어가 수동 지정</h2>
+      <p class="hint">‘표본어가 수’ 열이 없거나 비어 있는 수산 업체입니다. 표본어가가 5~8곳이면 체크하세요 (정심사 3 맨데이, 미체크는 1.5).</p>
+      <div class="scroll"><table id="tbl-suisan" class="grid"></table></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-cal">
+      <h2 id="h-cal">월간 달력</h2>
+      <div class="row"><label>심사원 <select id="sel-cal"></select></label></div>
+      <div id="cal"></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-chart">
+      <h2 id="h-chart">월별 맨데이 추이 <small id="c-year"></small></h2>
+      <div class="row"><label>심사원 <select id="sel-chart"></select></label></div>
+      <div id="chart" class="scroll"></div>
+      <div id="chart-legend" class="legend"></div>
+    </section>
+  </div>
+</main>
+
+<footer>맨데이 규칙은 <code>rules.js</code> 상단의 상수로 분리되어 있습니다. 보류 건은 기본적으로 집계에서 제외됩니다.</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="rules.js"></script>
+<script src="sample.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
