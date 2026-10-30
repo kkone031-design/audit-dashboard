@@ -10,7 +10,7 @@
   const params = new URLSearchParams(location.search);
   const ROTATE_SEC = Math.max(5, +params.get('sec') || 20);   // 화면 전환 간격(초) ?sec=30
   const REFRESH_SEC = 60;                                      // 데이터 다시 읽는 간격
-  const SLIDES = ['s1', 's2', 's3', 's4'];
+  const SLIDES = ['s1', 's2', 's5', 's3', 's4'];   // 화면 순서
   const MAX_TASKS = 4;                                         // 심사원 카드 1장에 보여 줄 항목 수
 
   /* ★ 연동 지점 ─ 지금은 내장 샘플입니다. SharePoint 목록·DB 등으로 바꿀 때 아래 두 함수와 DEMO만 고치면 됩니다.
@@ -119,6 +119,27 @@
     }
     fill('l-conf', 'n-conf', conf, (c) => li(`${+c.date.slice(5, 7)}/${+c.date.slice(8)}(${DOW[new Date(c.date + 'T00:00:00').getDay()]})`, c.auditor, esc(c.companies.join(' / ')), `${c.companies.length}건 중복`, 'red'), 6);
     fill('l-late', 'n-late', late, (t) => li(`지연 ${t.late}일`, t.owner, `${esc(t.title)}${t.company ? ` <span class="fd">${esc(t.company)}</span>` : ''}`, '', 'red'), 6);
+
+    /* 화면 5: 월별 인증 진행 */
+    const ST = C.STAGES;
+    const cases = C.caseStages(plan, rows, today);
+    const sc = C.stageCounts(cases);
+    const selM = +params.get('month') >= 1 && +params.get('month') <= 12 ? +params.get('month') : m;   // ?month=9 로 다른 달 보기
+    const maxTot = Math.max(1, ...sc.map((x) => x.total));
+    $('stage-key').innerHTML = ST.map((n, i) => `<i class="st-dot s${i}"></i>${esc(n)}`).join('');
+    $('pipe-total').textContent = plan.length ? `${y}년 · 총 ${cases.length}건 · 발급 완료 ${sc.reduce((a, x) => a + x.counts[ST.length - 1], 0)}건` : '';
+    $('mbars').innerHTML = plan.length ? sc.map((x, i) => `<div class="mb${i + 1 === selM ? ' cur' : ''}"><div class="tot">${x.total || ''}</div><div class="col"><div class="stk" style="height:${(x.total / maxTot) * 100}%">${x.counts.map((c, k) => (c ? `<div class="seg s${k}" style="flex:${c}" title="${esc(ST[k])} ${c}건"></div>` : '')).join('')}</div></div><div class="lbl">${i + 1}월</div><div class="late">${x.overdue ? `지연 ${x.overdue}` : ''}</div></div>`).join('')
+      : '<p class="none">연간 배정표가 등록되어 있지 않습니다</p>';
+    const selCases = cases.filter((c) => c.month === selM).sort((a, b) => b.overdue - a.overdue || a.company.localeCompare(b.company, 'ko'));
+    const odN = selCases.filter((c) => c.overdue).length;
+    $('kb-title').innerHTML = `${selM}월 인증 건 <small>${selCases.length}건${odN ? ` · 지연 ${odN}건` : ''}</small>`;
+    const MAXK = 9;
+    $('kanban').innerHTML = ST.map((name, k) => {
+      const list = selCases.filter((c) => c.stageIdx === k);
+      return `<div class="kc s${k}"><h3><span>${esc(name)}</span><b>${list.length}</b></h3><ul>` +
+        list.slice(0, MAXK).map((c) => `<li class="${c.overdue ? 'od' : ''}"><span class="cn">${esc(c.company)}</span><span class="sub">${esc(c.field)} · ${esc(c.lead)}</span></li>`).join('') +
+        (list.length > MAXK ? `<li class="more">외 ${list.length - MAXK}건</li>` : (list.length ? '' : '<li class="more">없음</li>')) + '</ul></div>';
+    }).join('');
 
     /* 화면 4: 연간 월별 부하(배정 기준) */
     const names = [...new Set([...Object.keys(trend), ...rows.map((r) => r.lead)])].sort((a, b) => a.localeCompare(b, 'ko'));

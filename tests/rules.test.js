@@ -125,6 +125,29 @@
   eq('월별 부하(배정 기준): 갑 3월=2, 7월=2, 10월=2 / 을 3월=0.5', [pl['갑'][2], pl['갑'][6], pl['갑'][9], pl['을'][2]], [2, 2, 2, 0.5]);
   eq('월별 부하: 수산(표본어가 없음) 1.5', pl['병'][9], 1.5);
 
+  // 10) 인증 진행 단계
+  eq('단계 표기 인식', ['신청전', '접수', '서류', '심사(현장)', '인증서발급', '발급', '모름', ''].map(CK.parseStage), ['신청전', '접수', '서류심사', '현장심사', '인증서 발급', '인증서 발급', null, null]);
+  const sp = CK.parsePlan([
+    { '업체명': 'S1', '정심사원': '갑', '배정월': 3, '진행단계': '인증서 발급' },
+    { '업체명': 'S2', '정심사원': '갑', '배정월': 3, '진행단계': '서류' },
+    { '업체명': 'S3', '정심사원': '갑', '배정월': 10 },
+    { '업체명': 'S4', '정심사원': '갑', '배정월': 10 },
+    { '업체명': 'S5', '정심사원': '갑', '배정월': 11 },
+    { '업체명': 'S6', '정심사원': '갑', '배정월': 10, '진행단계': '이상한값' },
+  ]);
+  eq('알 수 없는 단계는 경고', sp.warnings.length, 1);
+  const srows = R.parseRecords([
+    { '심사일자': '2026-10-05', '업체명': 'S3', '인증분야': '농산물', '정심사원': '갑', '진행상태': '완료' },
+    { '심사일자': '2026-10-20', '업체명': 'S4', '인증분야': '농산물', '정심사원': '갑', '진행상태': '예정' },
+  ]).rows;
+  const cs = CK.caseStages(sp.plan, srows, '2026-10-30');
+  const st = (n) => cs.find((c) => c.company === n);
+  eq('단계 추정: 일정 완료=현장심사, 예정=접수, 일정 없음=신청전', [st('S3').stage, st('S4').stage, st('S5').stage, st('S6').stage], ['현장심사', '접수', '신청전', '신청전']);
+  eq('명시한 단계가 추정보다 우선, 추정 여부 표시', [st('S2').stage, st('S2').derived, st('S3').derived], ['서류심사', false, true]);
+  eq('지연: 지난 달 배정인데 발급 전만 true', [st('S1').overdue, st('S2').overdue, st('S3').overdue, st('S5').overdue], [false, true, false, false]);
+  const sc = CK.stageCounts(cs);
+  eq('월별 단계 건수(3월): 서류1·발급1, 지연1', [sc[2].counts, sc[2].total, sc[2].overdue], [[0, 0, 1, 0, 1], 2, 1]);
+
   const text = out.join('\n') + `\n\n${out.length - fail}/${out.length} 통과`;
   if (typeof document !== 'undefined') { document.getElementById('out').textContent = text; document.title = fail ? 'FAIL' : 'PASS'; }
   else { console.log(text); if (fail) process.exit(1); }

@@ -118,13 +118,24 @@
     rows.forEach((r, i) => {
       if (unplanned.has(i)) return;                                  // 배정표에 없는 심사
       const lead = changed.has(i) ? S_OTHER(r.lead) : r.lead;         // 담당 변경
-      plan.push({ '업체명': r.company, '인증분야': r.field, '정심사원': lead, '부심사원': r.subs.join(','), '지역': r.region, '배정월': moved.has(i) ? r.m - 1 : r.m, '표본어가 수': r.farms == null ? '' : r.farms });
+      const m = moved.has(i) ? r.m - 1 : r.m;
+      plan.push({ '업체명': r.company, '인증분야': r.field, '정심사원': lead, '부심사원': r.subs.join(','), '지역': r.region, '배정월': m, '표본어가 수': r.farms == null ? '' : r.farms, '진행단계': sampleStage(m, rand()) });
     });
     // 배정은 됐지만 일정이 없는 업체
     [[7, '이서연', '농산물'], [9, '최민재', '축산물'], [10, '박도윤', '유기가공'], [10, '정하은', '수산'], [11, '강지후', '농산물']].forEach(([m, lead, f], k) => {
-      plan.push({ '업체명': `${['새솔', '미르', '다솜', '아름', '온누리'][k]}${NAME_B[f] || '농장'} ${901 + k + 10}호(가상)`, '인증분야': f, '정심사원': lead, '부심사원': '', '지역': '전남', '배정월': m, '표본어가 수': '' });
+      plan.push({ '업체명': `${['새솔', '미르', '다솜', '아름', '온누리'][k]}${NAME_B[f] || '농장'} ${901 + k + 10}호(가상)`, '인증분야': f, '정심사원': lead, '부심사원': '', '지역': '전남', '배정월': m, '표본어가 수': '', '진행단계': m < 10 ? '접수' : '신청전' });
     });
     return plan;
+  }
+  /** 배정월에 따라 그럴듯한 진행단계를 부여 (지난 달은 대부분 발급 완료, 먼 달은 신청전) */
+  function sampleStage(m, x) {
+    const pick = (cuts) => { for (const [lim, st] of cuts) if (x < lim) return st; return cuts[cuts.length - 1][1]; };
+    const CUR = +TODAY.slice(5, 7);
+    if (m < CUR - 1) return pick([[0.92, '인증서 발급'], [1, '현장심사']]);
+    if (m === CUR - 1) return pick([[0.7, '인증서 발급'], [0.9, '현장심사'], [1, '서류심사']]);
+    if (m === CUR) return pick([[0.25, '인증서 발급'], [0.6, '현장심사'], [0.8, '서류심사'], [1, '접수']]);
+    if (m === CUR + 1) return pick([[0.35, '접수'], [1, '신청전']]);
+    return pick([[0.12, '접수'], [1, '신청전']]);
   }
   function S_OTHER(name) { return AUDITORS[(AUDITORS.indexOf(name) + 1) % AUDITORS.length]; }
 
