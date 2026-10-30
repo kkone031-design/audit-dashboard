@@ -139,43 +139,46 @@
     /* 화면 5: 월별 인증 진행 */
     const ST = C.STAGES;
     const cases = C.caseStages(plan, rows, today);
-    const sc = C.stageCounts(cases);
+    const sc = C.stageCounts(cases, y);
     const selM = +params.get('month') >= 1 && +params.get('month') <= 12 ? +params.get('month') : m;   // ?month=9 로 다른 달 보기
     const maxTot = Math.max(1, ...sc.map((x) => x.total));
     $('stage-key').innerHTML = ST.map((n, i) => `<i class="st-dot s${i}"></i>${esc(n)}`).join('');
-    $('pipe-total').textContent = plan.length ? `${y}년 · 총 ${cases.length}건 · 발급 완료 ${sc.reduce((a, x) => a + x.counts[ST.length - 1], 0)}건` : '';
+    $('pipe-total').textContent = plan.length ? `${y}년 · 총 ${cases.filter((c) => c.ym.y === y).length}건 · 발급 완료 ${sc.reduce((a, x) => a + x.counts[ST.length - 1], 0)}건` : '';
     $('mbars').innerHTML = plan.length ? sc.map((x, i) => `<div class="mb${i + 1 === selM ? ' cur' : ''}"><div class="tot">${x.total || ''}</div><div class="col"><div class="stk" style="height:${(x.total / maxTot) * 100}%">${x.counts.map((c, k) => (c ? `<div class="seg s${k}" style="flex:${c}" title="${esc(ST[k])} ${c}건"></div>` : '')).join('')}</div></div><div class="lbl">${i + 1}월</div><div class="late">${x.overdue ? `지연 ${x.overdue}` : ''}</div></div>`).join('')
       : '<p class="none">연간 배정표가 등록되어 있지 않습니다</p>';
-    const selCases = cases.filter((c) => c.month === selM).sort((a, b) => b.overdue - a.overdue || a.company.localeCompare(b.company, 'ko'));
+    const selCases = cases.filter((c) => c.ym.y === y && c.ym.m === selM).sort((a, b) => b.overdue - a.overdue || a.company.localeCompare(b.company, 'ko'));
     const odN = selCases.filter((c) => c.overdue).length;
     $('kb-title').innerHTML = `${selM}월 인증 건 <small>${selCases.length}건${odN ? ` · 지연 ${odN}건` : ''}</small>`;
     const MAXK = 9;
     $('kanban').innerHTML = ST.map((name, k) => {
       const list = selCases.filter((c) => c.stageIdx === k);
       return `<div class="kc s${k}"><h3><span>${esc(name)}</span><b>${list.length}</b></h3><ul>` +
-        list.slice(0, MAXK).map((c) => `<li class="${c.overdue ? 'od' : ''}"><span class="cn">${esc(c.company)}</span><span class="sub">${esc(c.field)} · ${esc(c.lead)}</span></li>`).join('') +
+        list.slice(0, MAXK).map((c) => `<li class="${c.overdue ? 'od' : ''}"><span class="cn">${esc(c.company)}</span><span class="sub">${c.type ? esc(c.type) + ' · ' : ''}${esc(c.field)} · ${esc(c.lead)}</span></li>`).join('') +
         (list.length > MAXK ? `<li class="more">외 ${list.length - MAXK}건</li>` : (list.length ? '' : '<li class="more">없음</li>')) + '</ul></div>';
     }).join('');
 
-    /* 화면 7: 최근 4개월 인증 진행 — 이번 달 기준 2개월 전 ~ 1개월 뒤 (?from=7 로 시작 달 지정) */
-    const fromQ = +params.get('from');
-    const start = fromQ >= 1 && fromQ <= 9 ? fromQ : Math.min(Math.max(m - 2, 1), 9);
+    /* 화면 7: 5개월(2개월 전 ~ 2개월 뒤) 인증 진행.
+       소속 월: 갱신=인증 만료월, 신규=접수월 / 처리기한: 접수일부터 DEADLINE.days일 / 건이 많은 달: 급한 순으로 정렬하고 목록을 압축(dense) */
     const LAST = ST.length - 1;
-    $('m4').innerHTML = plan.length ? [0, 1, 2, 3].map((k) => {
-      const mon = start + k;
-      const all = cases.filter((c) => c.month === mon);
-      const open = all.filter((c) => c.stageIdx < LAST).sort((a, b) => b.overdue - a.overdue || b.stageIdx - a.stageIdx || a.company.localeCompare(b.company, 'ko'));
-      const doneN = all.length - open.length;
+    const md2 = (iso) => `${+iso.slice(5, 7)}/${+iso.slice(8)}`;
+    const urgency = (c) => (c.overdue ? 0 : c.renewalRisk ? 1 : c.level === 'red' ? 2 : c.level === 'orange' ? 3 : 4);
+    const dtag = (c) => (c.stageIdx === LAST ? '' : c.overdue ? `<span class="dt red">기한 초과 ${c.daysLeft == null ? '' : -c.daysLeft + '일'}</span>`
+      : c.renewalRisk ? `<span class="dt red">접수 필요 · 만료 D-${c.toExpiry}</span>`
+        : c.daysLeft == null ? '' : `<span class="dt ${c.level}">기한 D-${c.daysLeft}</span>`);
+    const wnd = C.monthWindow(y, m, 2, 2);
+    $('m4').innerHTML = plan.length ? wnd.map((w) => {
+      const all = cases.filter((c) => c.ym.y === w.y && c.ym.m === w.m);
+      const open = all.filter((c) => c.stageIdx < LAST).sort((a, b) => urgency(a) - urgency(b) || (a.daysLeft == null ? 9999 : a.daysLeft) - (b.daysLeft == null ? 9999 : b.daysLeft) || (a.toExpiry == null ? 9999 : a.toExpiry) - (b.toExpiry == null ? 9999 : b.toExpiry) || a.company.localeCompare(b.company, 'ko'));
       const counts = ST.map((_, i) => all.filter((c) => c.stageIdx === i).length);
-      const pastOpen = mon < m ? open.length : 0;
-      const MAXL = 12;
-      return `<div class="mp${mon === m ? ' cur' : ''}"><h3>${mon}월<small>${all.length}건</small>${mon === m ? '<span class="badge">이번 달</span>' : ''}</h3>` +
-        `<div class="sum">발급 완료 <b class="ok">${doneN}</b> · 진행 중 <b class="${pastOpen ? 'red' : ''}">${open.length}</b>${pastOpen ? ' <b class="red">(지난 달 · 지연)</b>' : ''}</div>` +
+      const od = open.filter((c) => c.overdue).length, soon = open.filter((c) => !c.overdue && c.level).length, risk = open.filter((c) => c.renewalRisk).length;
+      const dense = open.length > 10, MAXL = dense ? 18 : 11;
+      return `<div class="mp${w.m === m && w.y === y ? ' cur' : ''}${dense ? ' dense' : ''}"><h3>${w.y !== y ? w.y + '.' : ''}${w.m}월<small>${all.length}건</small>${w.m === m && w.y === y ? '<span class="badge">이번 달</span>' : ''}</h3>` +
+        `<div class="sum">신규 <b>${all.filter((c) => c.type === '신규').length}</b> · 갱신 <b>${all.filter((c) => c.type === '갱신').length}</b> · 발급 완료 <b class="ok">${all.length - open.length}</b> · 진행 중 <b>${open.length}</b></div>` +
+        `<div class="alerts">${od ? `<span class="al red">기한 초과 ${od}</span>` : ''}${risk ? `<span class="al red">접수 필요 ${risk}</span>` : ''}${soon ? `<span class="al orange">기한 임박 ${soon}</span>` : ''}${!od && !risk && !soon ? '<span class="al ok">기한 문제 없음</span>' : ''}</div>` +
         `<div class="sbar">${counts.map((c, i) => (c ? `<i class="s${i}" style="flex:${c}"></i>` : '')).join('')}</div>` +
         `<div class="chips2">${counts.map((c, i) => (c ? `<span class="sc s${i}">${esc(ST[i])} ${c}</span>` : '')).join('')}</div>` +
-        `<h4>${open.length ? '아직 끝나지 않은 건' : ''}</h4><ul>` +
-        (open.length ? open.slice(0, MAXL).map((c) => `<li class="${c.overdue ? 'od' : ''}"><span class="tx"><span class="cn">${esc(c.company)}</span><span class="sub">${esc(c.field)} · ${esc(c.lead)}${c.overdue ? ' · 지연' : ''}</span></span><span class="sc s${c.stageIdx}">${esc(ST[c.stageIdx])}</span></li>`).join('') + (open.length > MAXL ? `<li class="more">외 ${open.length - MAXL}건</li>` : '')
-          : (all.length ? '<li class="okline">✔ 모두 발급 완료</li>' : '<li class="more">배정된 건 없음</li>')) + '</ul></div>';
+        `<ul>` + (open.length ? open.slice(0, MAXL).map((c) => `<li class="${c.overdue || c.renewalRisk ? 'od' : ''}"><span class="tx"><span class="cn">${esc(c.company)}</span><span class="sub">${esc(c.type || '')}${c.type === '갱신' && c.expiry ? ' · 만료 ' + md2(c.expiry) : c.received ? ' · 접수 ' + md2(c.received) : ''} · ${esc(c.lead)}</span></span><span class="rt"><span class="sc s${c.stageIdx}">${esc(ST[c.stageIdx])}</span>${dtag(c)}</span></li>`).join('') + (open.length > MAXL ? `<li class="more">급한 순 ${MAXL}건 표시 · 외 ${open.length - MAXL}건</li>` : '')
+          : (all.length ? '<li class="okline">✔ 모두 발급 완료</li>' : '<li class="more">해당 건 없음</li>')) + '</ul></div>';
     }).join('') : '<p class="none">연간 배정표가 등록되어 있지 않습니다</p>';
 
     /* 화면 4: 연간 월별 부하(배정 기준) */

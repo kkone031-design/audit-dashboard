@@ -124,27 +124,40 @@
     const changed = pickIdx((r) => r.m >= 9 && r.m <= 11 && r.lead !== '김한결', 2);
     const moved = pickIdx((r) => r.m >= 10 && r.m <= 12, 2);
     const unplanned = pickIdx((r) => r.m >= 10 && r.m <= 11 && r.status !== '보류', 2);
+    const CUR = +TODAY.slice(5, 7);
+    const dayDiff = (a, b2) => Math.round((Date.parse(b2 + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86400000);
     rows.forEach((r, i) => {
       if (unplanned.has(i)) return;                                  // 배정표에 없는 심사
       const lead = changed.has(i) ? S_OTHER(r.lead) : r.lead;         // 담당 변경
-      const m = moved.has(i) ? r.m - 1 : r.m;
-      plan.push({ '업체명': r.company, '인증분야': r.field, '정심사원': lead, '부심사원': r.subs.join(','), '지역': r.region, '배정월': m, '표본어가 수': r.farms == null ? '' : r.farms, '진행단계': sampleStage(m, rand()) });
+      const m = moved.has(i) ? r.m - 1 : r.m;                         // 월 이동
+      // 구분: 갱신은 인증 만료월에 소속(만료일 ≈ 심사월), 신규는 접수월에 소속(접수일 = 심사일 10~34일 전)
+      const kind = hsh(i * 13 + 3) < 0.62 ? '갱신' : '신규';
+      let expiry = '', received = '';
+      if (kind === '갱신') {
+        expiry = R.isoDate(YEAR, r.m, Math.min(r.d, 28));
+        received = shiftIso(expiry, -(20 + Math.floor(hsh(i * 7 + 2) * 26)));       // 만료 20~45일 전 접수
+        if (dayDiff(TODAY, expiry) <= 45) received = received > TODAY ? shiftIso(TODAY, -Math.floor(hsh(i * 3 + 4) * 10)) : received;   // 만료가 가까우면 이미 접수한 상태
+        if (r.m === 11 && hsh(i * 5 + 1) > 0.92) received = '';                         // 만료가 다가오는데 접수 전(시연용)
+      } else received = shiftIso(r.date, -(10 + Math.floor(hsh(i * 7 + 2) * 25)));
+      if (received > TODAY) received = '';
+      // 진행단계: 일정과 모순되지 않게. 심사가 끝난 건은 현장심사/발급, 예정 건은 접수/서류심사
+      const x = hsh(i * 17 + 9);
+      let stage = '신청전';
+      if (received) {
+        const el = dayDiff(received, TODAY);
+        if (r.status === '완료') stage = el <= 10 ? '현장심사' : el <= 30 ? (x < 0.5 ? '현장심사' : '인증서 발급') : el <= 60 ? (x < 0.2 ? '현장심사' : '인증서 발급') : (x < 0.05 ? '현장심사' : '인증서 발급');
+        else stage = r.status === '보류' || x < 0.55 ? '접수' : '서류심사';
+      }
+      plan.push({ '업체명': r.company, '인증분야': r.field, '정심사원': lead, '부심사원': r.subs.join(','), '지역': r.region, '배정월': m, '표본어가 수': r.farms == null ? '' : r.farms,
+        '진행단계': stage, '구분': kind, '접수일': received, '인증만료일': expiry });
     });
-    // 배정은 됐지만 일정이 없는 업체
-    [[7, '이서연', '농산물'], [9, '최민재', '축산물'], [10, '박도윤', '유기가공'], [10, '정하은', '수산'], [11, '강지후', '농산물']].forEach(([m, lead, f], k) => {
-      plan.push({ '업체명': `${['새솔', '미르', '다솜', '아름', '온누리'][k]}${NAME_B[f] || '농장'} ${901 + k + 10}호(가상)`, '인증분야': f, '정심사원': lead, '부심사원': '', '지역': '전남', '배정월': m, '표본어가 수': '', '진행단계': m < 10 ? '접수' : '신청전' });
+    // 배정은 됐지만 일정이 없는 갱신 업체 (접수는 했는데 오래 멈춘 건, 만료가 임박했는데 접수 전인 건)
+    [[7, '이서연', '농산물', '2026-07-15', '2026-06-10', '접수'], [9, '최민재', '축산물', '2026-09-18', '2026-08-20', '서류심사'], [10, '박도윤', '유기가공', '2026-10-24', '2026-10-01', '접수'],
+      [10, '정하은', '수산', '2026-10-29', '2026-09-20', '서류심사'], [11, '강지후', '농산물', '2026-11-18', '', '신청전']].forEach(([m, lead, f, exp, rec, st], k) => {
+      plan.push({ '업체명': `${['새솔', '미르', '다솜', '아름', '온누리'][k]}${NAME_B[f] || '농장'} ${901 + k + 10}호(가상)`, '인증분야': f, '정심사원': lead, '부심사원': '', '지역': '전남', '배정월': m, '표본어가 수': '',
+        '진행단계': st, '구분': '갱신', '접수일': rec, '인증만료일': exp });
     });
     return plan;
-  }
-  /** 배정월에 따라 그럴듯한 진행단계를 부여 (지난 달은 대부분 발급 완료, 먼 달은 신청전) */
-  function sampleStage(m, x) {
-    const pick = (cuts) => { for (const [lim, st] of cuts) if (x < lim) return st; return cuts[cuts.length - 1][1]; };
-    const CUR = +TODAY.slice(5, 7);
-    if (m < CUR - 1) return pick([[0.92, '인증서 발급'], [1, '현장심사']]);
-    if (m === CUR - 1) return pick([[0.7, '인증서 발급'], [0.9, '현장심사'], [1, '서류심사']]);
-    if (m === CUR) return pick([[0.25, '인증서 발급'], [0.6, '현장심사'], [0.8, '서류심사'], [1, '접수']]);
-    if (m === CUR + 1) return pick([[0.35, '접수'], [1, '신청전']]);
-    return pick([[0.12, '접수'], [1, '신청전']]);
   }
   function S_OTHER(name) { return AUDITORS[(AUDITORS.indexOf(name) + 1) % AUDITORS.length]; }
 
