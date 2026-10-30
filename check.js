@@ -13,8 +13,9 @@
      days  : 접수일부터 처리기한(일)
      warn  : 기한까지 이 일수 이하로 남으면 '임박'(주황)
      urgent: 이 일수 이하면 '촉박'(빨강)
-     renewalNotice: 갱신 건의 인증 만료일까지 이 일수 이하로 남았는데 아직 접수 전이면 '접수 필요'(빨강) */
-  const DEADLINE = { days: 60, warn: 14, urgent: 7, renewalNotice: 30 };
+     renewalNotice: 갱신 건의 인증 만료일까지 이 일수 이하로 남았는데 아직 접수 전이면 '접수 필요'(빨강)
+     slow  : 접수 후 이 일수가 지나도록 발급 전이면 경과일을 주황으로 표시 (60일을 넘으면 빨강) */
+  const DEADLINE = { days: 60, warn: 14, urgent: 7, renewalNotice: 30, slow: 30 };
 
   // 연간 배정표 열 이름 (공백 제거 후 비교). 배정월: 3 / 3월 / 2026-03 모두 가능
   const ALIASES = {
@@ -107,12 +108,13 @@
   const addDays = (iso, n) => new Date((dayNum(iso) + n) * 86400000).toISOString().slice(0, 10);
 
   /**
-   * 인증 건의 소속 월과 처리기한.
+   * 인증 건의 소속 월과 기한.
    * - 소속 월(ym): 갱신 = 인증 만료월, 신규 = 접수월. 해당 날짜가 없으면(예: 아직 접수 전인 신규) 배정월(올해)로 둔다
-   * - 처리기한(deadline) = 접수일 + DEADLINE.days. 접수일이 없으면 기한 없음
+   * - 기한(deadline) = 인증 만료일(갱신)과 접수일 + DEADLINE.days(처리기한) 중 **먼저 다가오는 날**. dueBasis에 어느 쪽인지 기록
+   * - 접수 후 경과일(elapsed) = 오늘 - 접수일
    * - 진행단계가 배정표에 있으면 그 값, 없으면 일정으로 추정: 일정 없음=신청전, 예정=접수, 완료=현장심사
-   * - overdue: 발급 전인데 처리기한 경과(접수일이 없으면 소속 월이 지난 경우)
-   * - level: red(기한 경과 또는 7일 이내) / orange(14일 이내) / ''
+   * - overdue: 발급 전인데 기한 경과(기한을 알 수 없으면 소속 월이 지난 경우)
+   * - level: red(기한 경과 또는 urgent일 이내) / orange(warn일 이내) / ''
    * - renewalRisk: 갱신인데 접수 전이고 인증 만료가 DEADLINE.renewalNotice일 이내
    */
   function caseStages(plan, rows, todayIso) {
@@ -129,13 +131,18 @@
       const issued = stageIdx === LAST_STAGE;
       const base = p.type === '갱신' ? (p.expiry || p.received) : (p.received || p.expiry);
       const ym = base ? { y: +base.slice(0, 4), m: +base.slice(5, 7) } : { y: ty, m: p.month };
-      const deadline = p.received ? addDays(p.received, DEADLINE.days) : '';
+      const procDeadline = p.received ? addDays(p.received, DEADLINE.days) : '';
+      const expiryDue = p.type === '갱신' && p.expiry ? p.expiry : '';
+      let deadline = '', dueBasis = '';
+      if (expiryDue && (!procDeadline || expiryDue <= procDeadline)) { deadline = expiryDue; dueBasis = '인증만료'; }
+      else if (procDeadline) { deadline = procDeadline; dueBasis = '처리기한'; }
       const daysLeft = deadline ? daysBetween(todayIso, deadline) : null;
+      const elapsed = p.received ? daysBetween(p.received, todayIso) : null;
       const overdue = !issued && (deadline ? daysLeft < 0 : ym.y * 12 + ym.m < ty * 12 + tm);
       const level = issued || daysLeft == null ? '' : daysLeft < 0 || daysLeft <= DEADLINE.urgent ? 'red' : daysLeft <= DEADLINE.warn ? 'orange' : '';
       const toExpiry = p.expiry ? daysBetween(todayIso, p.expiry) : null;
       const renewalRisk = !issued && p.type === '갱신' && !p.received && toExpiry != null && toExpiry <= DEADLINE.renewalNotice;
-      return { ...p, month: ym.m, ym, stage, stageIdx, derived, deadline, daysLeft, toExpiry, overdue, level, renewalRisk };
+      return { ...p, month: ym.m, ym, stage, stageIdx, derived, procDeadline, deadline, dueBasis, daysLeft, elapsed, toExpiry, overdue, level, renewalRisk };
     });
   }
 

@@ -115,7 +115,8 @@ h2 small { color: var(--accent); font-weight: 700; font-size: 1.2rem; margin-lef
 .tag2.red { color: var(--red); } .tag2.orange { color: var(--orange); } .tag2.blue { color: var(--blue); } .tag2.muted { color: var(--muted); }
 .okline { color: var(--ok); font-size: 1.3rem; padding: .6rem 0; }
 
-/* 화면 7: 최근 4개월 인증 진행 */
+/* 화면 7: 5개월 인증 진행 */
+.m4-key { margin: 0; color: var(--muted); font-size: 1.05rem; } .m4-key b { color: var(--ink); }
 .m4 { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .8rem; }
 .mp { background: var(--panel); border: 1px solid var(--line); border-radius: .9rem; padding: .8rem 1rem; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .mp.cur { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -142,6 +143,9 @@ h2 small { color: var(--accent); font-weight: 700; font-size: 1.2rem; margin-lef
 .mp li .sub { display: block; font-size: .88rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mp li.od .cn { color: #ffd0d0; }
 .mp li .rt { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: .1rem; }
+.rr { display: inline-flex; align-items: center; gap: .35rem; }
+.el { font-size: .88rem; font-weight: 800; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.el.slow { color: var(--orange); } .el.late { color: var(--red); }
 .dt { font-size: .82rem; font-weight: 700; color: var(--muted); white-space: nowrap; }
 .dt.red { color: var(--red); } .dt.orange { color: var(--orange); }
 .mp.dense li { padding: .16rem 0; }

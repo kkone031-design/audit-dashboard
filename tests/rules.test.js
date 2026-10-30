@@ -179,8 +179,11 @@
   const nc = CK.caseStages(np.plan, [], '2026-10-30');
   const c = (n) => nc.find((x) => x.company === n);
   eq('소속 월: 갱신=만료월, 신규=접수월, 접수 전 신규=배정월', [c('갱신A').ym, c('신규B').ym, c('신규C').ym], [{ y: 2026, m: 9 }, { y: 2026, m: 9 }, { y: 2026, m: 12 }]);
-  eq('처리기한 = 접수일 + 60일', [c('갱신A').deadline, c('신규B').deadline, c('신규C').deadline], ['2026-10-09', '2026-11-02', '']);
-  eq('기한 경과(갱신A)는 지연, 잔여 3일(신규B)은 촉박(red)', [c('갱신A').overdue, c('갱신A').daysLeft, c('신규B').overdue, c('신규B').daysLeft, c('신규B').level], [true, -21, false, 3, 'red']);
+  eq('기한: 신규=접수+60일, 갱신=인증 만료일과 접수+60일 중 빠른 날, 접수 전 신규는 기한 없음', [c('갱신A').deadline, c('갱신A').dueBasis, c('신규B').deadline, c('신규B').dueBasis, c('신규C').deadline], ['2026-09-15', '인증만료', '2026-11-02', '처리기한', '']);
+  eq('만료 지난 갱신A는 지연(-45일), 잔여 3일 신규B는 촉박(red)', [c('갱신A').overdue, c('갱신A').daysLeft, c('신규B').overdue, c('신규B').daysLeft, c('신규B').level], [true, -45, false, 3, 'red']);
+  eq('접수 후 경과일(+N일): 갱신A 81일, 신규B 57일, 접수 전은 null', [c('갱신A').elapsed, c('신규B').elapsed, c('신규C').elapsed], [81, 57, null]);
+  const early = CK.caseStages(CK.parsePlan([{ '업체명': 'Z', '정심사원': '갑', '구분': '갱신', '인증만료일': '2027-03-01', '접수일': '2026-10-01', '진행단계': '서류' }]).plan, [], '2026-10-30')[0];
+  eq('갱신이라도 접수+60일이 만료보다 빠르면 처리기한이 기한', [early.deadline, early.dueBasis, early.daysLeft], ['2026-11-30', '처리기한', 31]);
   eq('발급 완료 건은 기한이 지나도 지연 아님', [c('갱신E').overdue, c('갱신E').level], [false, '']);
   eq('접수 전 갱신: 만료 30일 이내면 접수 필요(renewalRisk), 접수일이 있으면 해당 없음', [c('갱신D').renewalRisk, c('갱신D').toExpiry, c('갱신A').renewalRisk], [true, 11, false]);
   const near = CK.caseStages(CK.parsePlan([{ '업체명': 'N', '정심사원': '갑', '구분': '갱신', '인증만료일': '2026-11-20', '진행단계': '신청전' }]).plan, [], '2026-10-30')[0];

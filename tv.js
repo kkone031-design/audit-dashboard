@@ -153,7 +153,7 @@
     $('kanban').innerHTML = ST.map((name, k) => {
       const list = selCases.filter((c) => c.stageIdx === k);
       return `<div class="kc s${k}"><h3><span>${esc(name)}</span><b>${list.length}</b></h3><ul>` +
-        list.slice(0, MAXK).map((c) => `<li class="${c.overdue ? 'od' : ''}"><span class="cn">${esc(c.company)}</span><span class="sub">${c.type ? esc(c.type) + ' · ' : ''}${esc(c.field)} · ${esc(c.lead)}</span></li>`).join('') +
+        list.slice(0, MAXK).map((c) => `<li class="${c.overdue ? 'od' : ''}"><span class="cn">${esc(c.company)}</span><span class="sub">${c.type ? esc(c.type) + ' · ' : ''}${esc(c.field)} · ${esc(c.lead)}${c.elapsed != null && k < 4 ? ' · 접수 +' + c.elapsed + '일' : ''}</span></li>`).join('') +
         (list.length > MAXK ? `<li class="more">외 ${list.length - MAXK}건</li>` : (list.length ? '' : '<li class="more">없음</li>')) + '</ul></div>';
     }).join('');
 
@@ -162,9 +162,14 @@
     const LAST = ST.length - 1;
     const md2 = (iso) => `${+iso.slice(5, 7)}/${+iso.slice(8)}`;
     const urgency = (c) => (c.overdue ? 0 : c.renewalRisk ? 1 : c.level === 'red' ? 2 : c.level === 'orange' ? 3 : 4);
-    const dtag = (c) => (c.stageIdx === LAST ? '' : c.overdue ? `<span class="dt red">기한 초과 ${c.daysLeft == null ? '' : -c.daysLeft + '일'}</span>`
-      : c.renewalRisk ? `<span class="dt red">접수 필요 · 만료 D-${c.toExpiry}</span>`
-        : c.daysLeft == null ? '' : `<span class="dt ${c.level}">기한 D-${c.daysLeft}</span>`);
+    const dtag = (c, dense) => {
+      if (c.stageIdx === LAST) return '';
+      if (c.renewalRisk) return `<span class="dt red">${dense ? '접수필요' : '접수 필요'} · 만료 D-${c.toExpiry}</span>`;
+      if (c.daysLeft == null) return '';
+      const nm = c.dueBasis === '인증만료' ? '만료' : '기한';
+      return c.daysLeft < 0 ? `<span class="dt red">${nm} +${-c.daysLeft}일${dense ? '' : (c.dueBasis === '인증만료' ? ' 경과' : ' 초과')}</span>` : `<span class="dt ${c.level}">${nm} D-${c.daysLeft}</span>`;
+    };
+    const elTag = (c) => (c.elapsed == null ? '<span class="el">접수 전</span>' : `<span class="el ${c.elapsed >= C.DEADLINE.days ? 'late' : c.elapsed >= C.DEADLINE.slow ? 'slow' : ''}">+${c.elapsed}일</span>`);
     const wnd = C.monthWindow(y, m, 2, 2);
     $('m4').innerHTML = plan.length ? wnd.map((w) => {
       const all = cases.filter((c) => c.ym.y === w.y && c.ym.m === w.m);
@@ -177,7 +182,7 @@
         `<div class="alerts">${od ? `<span class="al red">기한 초과 ${od}</span>` : ''}${risk ? `<span class="al red">접수 필요 ${risk}</span>` : ''}${soon ? `<span class="al orange">기한 임박 ${soon}</span>` : ''}${!od && !risk && !soon ? '<span class="al ok">기한 문제 없음</span>' : ''}</div>` +
         `<div class="sbar">${counts.map((c, i) => (c ? `<i class="s${i}" style="flex:${c}"></i>` : '')).join('')}</div>` +
         `<div class="chips2">${counts.map((c, i) => (c ? `<span class="sc s${i}">${esc(ST[i])} ${c}</span>` : '')).join('')}</div>` +
-        `<ul>` + (open.length ? open.slice(0, MAXL).map((c) => `<li class="${c.overdue || c.renewalRisk ? 'od' : ''}"><span class="tx"><span class="cn">${esc(c.company)}</span><span class="sub">${esc(c.type || '')}${c.type === '갱신' && c.expiry ? ' · 만료 ' + md2(c.expiry) : c.received ? ' · 접수 ' + md2(c.received) : ''} · ${esc(c.lead)}</span></span><span class="rt"><span class="sc s${c.stageIdx}">${esc(ST[c.stageIdx])}</span>${dtag(c)}</span></li>`).join('') + (open.length > MAXL ? `<li class="more">급한 순 ${MAXL}건 표시 · 외 ${open.length - MAXL}건</li>` : '')
+        `<ul>` + (open.length ? open.slice(0, MAXL).map((c) => `<li class="${c.overdue || c.renewalRisk ? 'od' : ''}"><span class="tx"><span class="cn">${esc(c.company)}</span><span class="sub">${esc(c.type || '')}${c.type === '갱신' && c.expiry ? ' · 만료 ' + md2(c.expiry) : ''}${c.received ? ' · 접수 ' + md2(c.received) : ''} · ${esc(c.lead)}</span></span><span class="rt"><span class="rr">${elTag(c)}<span class="sc s${c.stageIdx}" title="${esc(ST[c.stageIdx])}">${esc(dense ? ST[c.stageIdx].slice(0, 2) : ST[c.stageIdx])}</span></span>${dtag(c, dense)}</span></li>`).join('') + (open.length > MAXL ? `<li class="more">급한 순 ${MAXL}건 표시 · 외 ${open.length - MAXL}건</li>` : '')
           : (all.length ? '<li class="okline">✔ 모두 발급 완료</li>' : '<li class="more">해당 건 없음</li>')) + '</ul></div>';
     }).join('') : '<p class="none">연간 배정표가 등록되어 있지 않습니다</p>';
 
