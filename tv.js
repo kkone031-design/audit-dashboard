@@ -209,4 +209,7 @@
   tickClock(); setInterval(tickClock, 1000);
   show(only >= 1 && only <= SLIDES.length ? only - 1 : 0); startRotate();
   refresh(); setInterval(refresh, REFRESH_SEC * 1000);
+  // 벽면 TV는 며칠씩 켜 두므로, 주기적으로 페이지 전체를 다시 불러와 새 버전 배포를 자동 반영 (?reload=분, 0이면 끔)
+  const reloadMin = params.has('reload') ? +params.get('reload') : 60;
+  if (reloadMin > 0) setTimeout(() => location.reload(), reloadMin * 60 * 1000);
 })();
