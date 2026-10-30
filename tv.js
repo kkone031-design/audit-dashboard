@@ -1,7 +1,7 @@
 /* TV 현황판. 맨데이 계산은 rules.js, 할일 계산은 tasks.js를 사용합니다. */
 (function () {
   'use strict';
-  const R = AuditRules, T = AuditTasks;
+  const R = AuditRules, T = AuditTasks, C = AuditCheck;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
@@ -10,17 +10,19 @@
   const params = new URLSearchParams(location.search);
   const ROTATE_SEC = Math.max(5, +params.get('sec') || 20);   // 화면 전환 간격(초) ?sec=30
   const REFRESH_SEC = 60;                                      // 데이터 다시 읽는 간격
-  const SLIDES = ['s1', 's2', 's3'];
+  const SLIDES = ['s1', 's2', 's3', 's4'];
   const MAX_TASKS = 4;                                         // 심사원 카드 1장에 보여 줄 항목 수
 
   /* ★ 연동 지점 ─ 지금은 내장 샘플입니다. SharePoint 목록·DB 등으로 바꿀 때 아래 두 함수와 DEMO만 고치면 됩니다.
      fetchRecords: 심사 일정  (엑셀 업로드와 같은 열 이름의 객체 배열)
-     fetchTasks  : 심사원 할일 (열: 기한, 담당자, 할일, 업체명, 상태[대기/진행/완료]) */
+     fetchTasks  : 심사원 할일 (열: 기한, 담당자, 할일, 업체명, 상태[대기/진행/완료])
+     fetchPlan   : 연말에 확정한 연간 배정표 (열: 업체명, 인증분야, 정심사원, 부심사원, 지역, 배정월) */
   const DEMO = true;                     // true면 오늘 날짜를 샘플 기준일로 고정
   async function fetchRecords() { return AuditSample.generate(); }
   async function fetchTasks() { return AuditSample.generateTasks(); }
+  async function fetchPlan() { return AuditSample.generatePlan(); }
 
-  let rows = [], tasks = [];
+  let rows = [], tasks = [], plan = [];
   let slide = 0, timer = null;
 
   const ymd = (d) => R.isoDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
@@ -87,20 +89,47 @@
     /* 화면 2: 달력 */
     renderCal(y, m, now, live().filter((r) => r.y === y && r.m === m));
 
-    /* 화면 3: 맨데이 */
-    const mrows = live().filter((r) => r.y === y && r.m === m);
-    const done = mrows.filter((r) => r.status === '완료').length;
-    $('kpis').innerHTML = [['이번 달 심사', mrows.length, ''], ['완료', done, ''], ['예정', mrows.length - done, ''], ['맨데이 주의 인원', warn.length, warn.length ? 'warn' : '']]
-      .map(([t, v, c]) => `<div class="kpi ${c}"><b>${v}</b><span>${t}</span></div>`).join('');
-    const yMax = Math.max(24, Math.ceil(Math.max(0, ...sum.map((s) => s.manday)) / 4) * 4 + 2);
-    const pct = (v) => (v / yMax) * 100;
-    $('axis').innerHTML = `<span></span><div class="ticks"><span class="t o" style="left:${pct(R.WARN.orange)}%">${R.WARN.orange}</span><span class="t r" style="left:${pct(R.WARN.red)}%">${R.WARN.red}</span></div><span></span>`;
-    $('rows').innerHTML = sum.length ? sum.map((s) => `
-      <div class="row ${s.level === 'ok' ? '' : s.level}">
-        <div class="name">${esc(s.name)}</div>
-        <div class="track"><div class="fill" style="width:${pct(s.manday)}%"></div><i class="ref o" style="left:${pct(R.WARN.orange)}%"></i><i class="ref r" style="left:${pct(R.WARN.red)}%"></i></div>
-        <div class="val"><b>${fmt(s.manday)}</b><span>정 ${s.lead} · 부 ${s.sub}<br>완료 ${s.done} · 예정 ${s.planned}</span></div>
-      </div>`).join('') : '<p class="empty">이 달에 집계할 심사가 없습니다.</p>';
+    /* 화면 2: 점검 필요 */
+    const rc = C.reconcile(plan, rows, today);
+    const conf = C.conflicts(rows).filter((c) => c.date >= today);
+    const late = tasks.filter((t) => t.status !== '완료' && T.daysBetween(t.due, today) > 0)
+      .map((t) => ({ ...t, late: T.daysBetween(t.due, today) })).sort((a, b) => b.late - a.late);
+    const trend = R.monthlyTrend(C.planAssignments(plan, y), y);
+    const crowd = [];
+    Object.keys(trend).forEach((n) => trend[n].forEach((v, i) => { if (i + 1 >= m && R.levelOf(v) !== 'ok') crowd.push({ name: n, m: i + 1, v, level: R.levelOf(v) }); }));
+    crowd.sort((a, b) => a.m - b.m || b.v - a.v);
+    const diffN = rc.changed.length + rc.moved.length + rc.unplanned.length;
+    const tile = (label, n, cls) => `<div class="tile ${n ? cls : 'ok'}"><b>${n ? n : '✔'}</b><span>${label}</span></div>`;
+    $('checks').innerHTML = tile('일정 누락·미확정', rc.missing.length + rc.unscheduled.length, rc.missing.length ? 'red' : 'orange')
+      + tile('일정 충돌', conf.length, 'red') + tile('배정표와 다른 건', diffN, 'orange')
+      + tile('보고서 지연', late.length, 'red') + tile('쏠림 예상(남은 달)', crowd.length, crowd.some((c) => c.level === 'red') ? 'red' : 'orange');
+    const fill = (ul, nEl, items, render, max) => {
+      $(nEl).textContent = items.length ? `${items.length}건` : '';
+      $(ul).innerHTML = items.length ? items.slice(0, max).map(render).join('') + (items.length > max ? `<li class="none">외 ${items.length - max}건</li>` : '') : '<li class="okline">✔ 해당 없음</li>';
+    };
+    const li = (d, who, co, tag, tcls) => `<li><span class="d">${d}</span><span class="who">${esc(who)}</span><span class="co">${co}</span><span class="tag2 ${tcls}">${tag}</span></li>`;
+    if (!plan.length) { $('l-miss').innerHTML = $('l-diff').innerHTML = '<li class="none">연간 배정표가 등록되어 있지 않습니다</li>'; }
+    else {
+      fill('l-miss', 'n-miss', [...rc.missing.map((x) => ({ ...x, k: 'm' })), ...rc.unscheduled.map((x) => ({ ...x, k: 'u' }))],
+        (x) => li(`${x.month}월 배정`, x.lead, esc(x.company), x.k === 'm' ? `일정 없음 · ${m - x.month}개월 경과` : '이번 달 · 일정 미확정', x.k === 'm' ? 'red' : 'orange'), 6);
+      fill('l-diff', 'n-diff', [...rc.changed.map((x) => ({ ...x, k: 'c' })), ...rc.moved.map((x) => ({ ...x, k: 'v' })), ...rc.unplanned.map((x) => ({ ...x, k: 'p' }))],
+        (x) => x.k === 'c' ? li('담당 변경', x.actualLead, `${esc(x.company)} <span class="fd">배정 ${esc(x.planLead)} → ${esc(x.actualLead)}</span>`, '확인', 'blue')
+          : x.k === 'v' ? li('월 이동', x.lead, `${esc(x.company)} <span class="fd">${x.planMonth}월 → ${x.actualMonth}월</span>`, '확인', 'blue')
+            : li('배정 외', x.lead, `${esc(x.company)} <span class="fd">${x.date.slice(5).replace('-', '/')}</span>`, '확인', 'muted'), 6);
+    }
+    fill('l-conf', 'n-conf', conf, (c) => li(`${+c.date.slice(5, 7)}/${+c.date.slice(8)}(${DOW[new Date(c.date + 'T00:00:00').getDay()]})`, c.auditor, esc(c.companies.join(' / ')), `${c.companies.length}건 중복`, 'red'), 6);
+    fill('l-late', 'n-late', late, (t) => li(`지연 ${t.late}일`, t.owner, `${esc(t.title)}${t.company ? ` <span class="fd">${esc(t.company)}</span>` : ''}`, '', 'red'), 6);
+
+    /* 화면 4: 연간 월별 부하(배정 기준) */
+    const names = [...new Set([...Object.keys(trend), ...rows.map((r) => r.lead)])].sort((a, b) => a.localeCompare(b, 'ko'));
+    const now_m = m;
+    $('heat').innerHTML = plan.length
+      ? `<div class="hr hd"><div></div>${Array.from({ length: 12 }, (_, i) => `<div class="${i + 1 === now_m ? 'now' : ''}">${i + 1}월</div>`).join('')}</div>` +
+        names.map((n) => `<div class="hr"><div class="nm">${esc(n)}</div>${Array.from({ length: 12 }, (_, i) => { const v = (trend[n] || [])[i] || 0; const lv = R.levelOf(v); return `<div class="${v ? (lv === 'ok' ? '' : 'c-' + lv) : 'c-none'}${i + 1 === now_m ? ' now' : ''}">${v ? fmt(v) : '–'}</div>`; }).join('')}</div>`).join('')
+      : '<p class="none">연간 배정표가 등록되어 있지 않습니다</p>';
+    $('crowd').innerHTML = crowd.length
+      ? crowd.slice(0, 10).map((c) => `<li><span class="d">${c.m}월</span><span class="who">${esc(c.name)}</span><span class="co"></span><span class="tag2 ${c.level === 'red' ? 'red' : 'orange'}">${fmt(c.v)}</span></li>`).join('') + (crowd.length > 10 ? `<li class="none">외 ${crowd.length - 10}건</li>` : '')
+      : '<li class="okline">✔ 이번 달 이후 쏠림 없음</li>';
 
     $('updated').textContent = DEMO ? `샘플 데이터 · 기준일 ${today}` : `데이터 갱신 ${new Date().toTimeString().slice(0, 8)}`;
   }
@@ -144,8 +173,8 @@
 
   async function refresh() {
     try {
-      const [rec, tk] = await Promise.all([fetchRecords(), fetchTasks()]);
-      rows = R.parseRecords(rec).rows; tasks = T.parseTasks(tk).tasks;
+      const [rec, tk, pl] = await Promise.all([fetchRecords(), fetchTasks(), fetchPlan()]);
+      rows = R.parseRecords(rec).rows; tasks = T.parseTasks(tk).tasks; plan = C.parsePlan(pl).plan;
       render();
     } catch (e) { /* 실패 시 직전 화면 유지 */ }
   }

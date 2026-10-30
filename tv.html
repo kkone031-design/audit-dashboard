@@ -38,21 +38,34 @@
     </div>
   </section>
 
-  <!-- 화면 2: 월간 달력 -->
-  <section class="slide" id="s2" aria-label="월간 심사 일정">
+  <!-- 화면 2: 점검 필요 -->
+  <section class="slide col" id="s2" aria-label="점검 필요">
+    <div id="checks" class="checks"></div>
+    <div class="chk-grid">
+      <div class="panel"><h2>일정 누락 · 미확정 <small id="n-miss"></small></h2><ul id="l-miss" class="plain"></ul></div>
+      <div class="panel"><h2>일정 충돌 <small id="n-conf"></small></h2><ul id="l-conf" class="plain"></ul></div>
+      <div class="panel"><h2>배정표와 다른 건 <small id="n-diff"></small></h2><ul id="l-diff" class="plain"></ul></div>
+      <div class="panel"><h2>보고서 지연 <small id="n-late"></small></h2><ul id="l-late" class="plain"></ul></div>
+    </div>
+  </section>
+
+  <!-- 화면 3: 월간 달력 -->
+  <section class="slide" id="s3" aria-label="월간 심사 일정">
     <div id="cal" class="cal"></div>
   </section>
 
-  <!-- 화면 3: 맨데이 -->
-  <section class="slide col" id="s3" aria-label="심사원별 맨데이">
-    <div id="kpis" class="kpis"></div>
-    <div class="panel load">
+  <!-- 화면 4: 연간 월별 부하 -->
+  <section class="slide" id="s4" aria-label="연간 월별 부하">
+    <div class="panel heat-panel">
       <div class="panel-head">
-        <h2>심사원별 월 맨데이</h2>
-        <div class="key"><i class="k ok"></i>정상 <i class="k orange"></i>18 이상 <i class="k red"></i>20 초과</div>
+        <h2>심사원별 월 부하 <small>연간 배정 기준 맨데이</small></h2>
+        <div class="key"><i class="k orange"></i>18 이상 <i class="k red"></i>20 초과</div>
       </div>
-      <div id="axis" class="axis"></div>
-      <div id="rows" class="rows"></div>
+      <div id="heat" class="heat"></div>
+    </div>
+    <div class="panel crowd">
+      <h2>쏠림 예상</h2>
+      <ul id="crowd" class="plain"></ul>
     </div>
   </section>
 
@@ -64,6 +77,7 @@
 <script src="rules.js"></script>
 <script src="sample.js"></script>
 <script src="tasks.js"></script>
+<script src="check.js"></script>
 <script src="tv.js"></script>
 </body>
 </html>

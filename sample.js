@@ -79,6 +79,8 @@
         records.push(rec);
       }
     }
+    // 일정 충돌 시연용: 김한결은 11/4에 이미 심사가 있음
+    records.push({ '심사일자': '2026-11-04', '업체명': '새솔농장 902호(가상)', '인증분야': '농산물', '정심사원': '김한결', '부심사원': '', '지역': '충남', '진행상태': '예정', '표본어가 수': '' });
     return records;
   }
 
@@ -104,6 +106,28 @@
     return out;
   }
 
+  /** 샘플 연간 배정표: 일정에서 만들되 점검 시연을 위해 누락·변경·월 이동·배정 외 심사를 일부러 섞음 */
+  function generatePlan() {
+    const rand = rng(555);
+    const rows = R.parseRecords(generate()).rows;
+    const plan = [];
+    const pickIdx = (cond, n) => { const c = rows.map((r, i) => (cond(r) ? i : -1)).filter((i) => i >= 0); const out = new Set(); while (out.size < Math.min(n, c.length)) out.add(c[Math.floor(rand() * c.length)]); return out; };
+    const changed = pickIdx((r) => r.m >= 9 && r.m <= 11 && r.lead !== '김한결', 2);
+    const moved = pickIdx((r) => r.m >= 10 && r.m <= 12, 2);
+    const unplanned = pickIdx((r) => r.m >= 10 && r.m <= 11 && r.status !== '보류', 2);
+    rows.forEach((r, i) => {
+      if (unplanned.has(i)) return;                                  // 배정표에 없는 심사
+      const lead = changed.has(i) ? S_OTHER(r.lead) : r.lead;         // 담당 변경
+      plan.push({ '업체명': r.company, '인증분야': r.field, '정심사원': lead, '부심사원': r.subs.join(','), '지역': r.region, '배정월': moved.has(i) ? r.m - 1 : r.m, '표본어가 수': r.farms == null ? '' : r.farms });
+    });
+    // 배정은 됐지만 일정이 없는 업체
+    [[7, '이서연', '농산물'], [9, '최민재', '축산물'], [10, '박도윤', '유기가공'], [10, '정하은', '수산'], [11, '강지후', '농산물']].forEach(([m, lead, f], k) => {
+      plan.push({ '업체명': `${['새솔', '미르', '다솜', '아름', '온누리'][k]}${NAME_B[f] || '농장'} ${901 + k + 10}호(가상)`, '인증분야': f, '정심사원': lead, '부심사원': '', '지역': '전남', '배정월': m, '표본어가 수': '' });
+    });
+    return plan;
+  }
+  function S_OTHER(name) { return AUDITORS[(AUDITORS.indexOf(name) + 1) % AUDITORS.length]; }
+
   /** 엑셀 양식(샘플 다운로드)용 예시 3줄 */
   const TEMPLATE_HEADERS = ['심사일자', '업체명', '인증분야', '정심사원', '부심사원', '지역', '진행상태', '표본어가 수'];
   const TEMPLATE_ROWS = [
@@ -112,5 +136,5 @@
     ['2026-03-20', '예시식품', '유기가공', '이서연', '최민재', '충남', '보류', ''],
   ];
 
-  return { YEAR, TODAY, AUDITORS, generate, generateTasks, TEMPLATE_HEADERS, TEMPLATE_ROWS };
+  return { YEAR, TODAY, AUDITORS, generate, generateTasks, generatePlan, TEMPLATE_HEADERS, TEMPLATE_ROWS };
 }));

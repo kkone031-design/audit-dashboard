@@ -95,6 +95,36 @@
   eq('오늘 할일: 지연이 먼저, 내일·지난 완료 건은 제외', g('갑').tasks.map((t) => [t.title, t.late]), [['지연된 일', 3], ['보고서 작성', 0]]);
   eq('오늘 기한의 완료 건은 완료 표시로 포함', g('을').tasks.map((t) => t.done), [true]);
 
+  // 9) 연간 배정표 대조·충돌·월별 부하 (check.js)
+  const CK = typeof require === 'function' ? require('../check.js') : window.AuditCheck;
+  const pp = CK.parsePlan([
+    { '업체명': 'A농장', '인증분야': '농산물', '정심사원': '갑', '부심사원': '을', '배정월': '3월' },
+    { '업체명': 'B농장', '인증분야': '농산물', '정심사원': '갑', '배정월': 7 },
+    { '업체명': 'C농장', '인증분야': '농산물', '정심사원': '갑', '배정월': '2026-10' },
+    { '업체명': 'D농장', '인증분야': '농산물', '정심사원': '병', '배정월': 5 },
+    { '업체명': 'E 농장', '인증분야': '수산', '정심사원': '병', '배정월': 10 },
+    { '업체명': '월없음', '정심사원': '갑', '배정월': '13월' },
+  ]);
+  eq('배정표 파싱: 월 형식 3월/7/2026-10, 잘못된 행 제외', [pp.plan.map((x) => x.month), pp.warnings.length], [[3, 7, 10, 5, 10], 1]);
+  const sched = R.parseRecords([
+    { '심사일자': '2026-03-05', '업체명': 'A농장', '인증분야': '농산물', '정심사원': '갑', '부심사원': '을', '진행상태': '완료' },
+    { '심사일자': '2026-06-10', '업체명': 'D농장', '인증분야': '농산물', '정심사원': '정', '진행상태': '완료' },
+    { '심사일자': '2026-10-10', '업체명': 'E농장', '인증분야': '수산', '정심사원': '병', '진행상태': '예정' },
+    { '심사일자': '2026-10-10', '업체명': '배정외', '인증분야': '농산물', '정심사원': '병', '진행상태': '예정' },
+    { '심사일자': '2026-10-12', '업체명': '보류건', '인증분야': '농산물', '정심사원': '무', '진행상태': '보류' },
+    { '심사일자': '2026-10-12', '업체명': '보류건2', '인증분야': '농산물', '정심사원': '무', '진행상태': '예정' },
+  ]).rows;
+  const rc = CK.reconcile(pp.plan, sched, '2026-10-30');
+  eq('대조: 지난 달 배정인데 일정 없음 = 누락', rc.missing.map((x) => x.company), ['B농장']);
+  eq('대조: 이번 달 배정인데 일정 없음 = 미확정', rc.unscheduled.map((x) => x.company), ['C농장']);
+  eq('대조: 담당 변경(D농장 병→정)', rc.changed.map((x) => [x.company, x.planLead, x.actualLead]), [['D농장', '병', '정']]);
+  eq('대조: 월 이동(D농장 5→6월), 업체명 공백 차이는 같은 업체', rc.moved.map((x) => [x.company, x.planMonth, x.actualMonth]), [['D농장', 5, 6]]);
+  eq('대조: 배정표에 없는 심사', rc.unplanned.map((x) => x.company), ['배정외', '보류건', '보류건2']);
+  eq('충돌: 병이 10/10에 2건', CK.conflicts(sched).map((c) => [c.auditor, c.date, c.companies.length]), [['병', '2026-10-10', 2]]);
+  const pl = R.monthlyTrend(CK.planAssignments(pp.plan, 2026), 2026);
+  eq('월별 부하(배정 기준): 갑 3월=2, 7월=2, 10월=2 / 을 3월=0.5', [pl['갑'][2], pl['갑'][6], pl['갑'][9], pl['을'][2]], [2, 2, 2, 0.5]);
+  eq('월별 부하: 수산(표본어가 없음) 1.5', pl['병'][9], 1.5);
+
   const text = out.join('\n') + `\n\n${out.length - fail}/${out.length} 통과`;
   if (typeof document !== 'undefined') { document.getElementById('out').textContent = text; document.title = fail ? 'FAIL' : 'PASS'; }
   else { console.log(text); if (fail) process.exit(1); }
