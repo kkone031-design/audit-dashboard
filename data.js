@@ -8,19 +8,30 @@
 (function () {
   'use strict';
   const S = AuditSample;
-  const DEMO = true;                       // true면 오늘 날짜를 샘플 기준일(AuditSample.TODAY)로 고정
   const ACK_KEY = 'audit-demo-acks';
+  const IMPORT_KEY = 'audit-import-v1';    // 가져오기 화면(import.html)에서 '현황판에 적용'한 자료. 이 브라우저에만 저장됨
 
   const readLocal = () => { try { return JSON.parse(localStorage.getItem(ACK_KEY) || '[]'); } catch (e) { return []; } };
+  const readImport = () => { try { const j = JSON.parse(localStorage.getItem(IMPORT_KEY) || 'null'); return j && j.plan && j.schedule ? j : null; } catch (e) { return null; } };
+  const forceDemo = new URLSearchParams(location.search).get('demo') === '1';   // ?demo=1 이면 가져온 자료가 있어도 샘플을 보여 줌
+  const imp = forceDemo ? null : readImport();
+  const DEMO = !imp;                       // true면 샘플 데이터이고 오늘 날짜를 샘플 기준일(AuditSample.TODAY)로 고정
+  const localIso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
   window.AuditData = {
     DEMO,
+    IMPORTED: !!imp,
+    builtAt: imp ? imp.builtAt : '',
     today() { return DEMO ? new Date(S.TODAY + 'T09:00:00') : new Date(); },
-    todayIso() { return DEMO ? S.TODAY : new Date().toISOString().slice(0, 10); },
-    async fetchRecords() { return S.generate(); },
-    async fetchTasks() { return S.generateTasks(); },
-    async fetchPlan() { return S.generatePlan(); },
-    async fetchAcks() { return [...S.generateAcks(), ...readLocal()]; },
+    todayIso() { return DEMO ? S.TODAY : localIso(new Date()); },
+    async fetchRecords() { return imp ? imp.schedule : S.generate(); },
+    async fetchTasks() { return imp ? [] : S.generateTasks(); },
+    async fetchPlan() { return imp ? imp.plan : S.generatePlan(); },
+    async fetchAcks() { return imp ? readLocal() : [...S.generateAcks(), ...readLocal()]; },
+    /** 가져오기 화면에서 호출: { plan:[…], schedule:[…], builtAt } */
+    saveImport(data) { localStorage.setItem(IMPORT_KEY, JSON.stringify(data)); },
+    clearImport() { try { localStorage.removeItem(IMPORT_KEY); } catch (e) { /* 무시 */ } },
+    hasImport() { return !!readImport(); },
     /** ack = { date: '2026-11-10', company, auditor } */
     async saveAck(ack) {
       const now = new Date();
@@ -31,5 +42,6 @@
     },
     resetDemoAcks() { try { localStorage.removeItem(ACK_KEY); } catch (e) { /* 무시 */ } },
     ACK_KEY,
+    IMPORT_KEY,
   };
 }());

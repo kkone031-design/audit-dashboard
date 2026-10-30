@@ -29,6 +29,7 @@
     stage: ['진행단계', '인증단계', '단계'],
     type: ['구분', '신청구분', '인증구분'],        // 신규 / 갱신
     received: ['접수일', '접수일자'],
+    due: ['처리기한', '처리기한일'],               // 대장에 처리기한(연장 반영 포함)이 있으면 그 값을 우선 사용
     expiry: ['인증만료일', '만료일', '유효기간만료일'],
   };
   const norm = (s) => String(s == null ? '' : s).replace(/[\s 　]+/g, '');
@@ -81,7 +82,7 @@
       const f = clean(pick('farms'));
       const farms = f !== '' && isFinite(parseFloat(f)) ? parseFloat(f) : null;
       plan.push({
-        key: coKey(company), company, field: clean(pick('field')), lead, region: clean(pick('region')), month, farms, stage, type, received, expiry,
+        key: coKey(company), company, field: clean(pick('field')), lead, region: clean(pick('region')), month, farms, stage, type, received, expiry, due: dateOf(pick('due')),
         subs: [...new Set(clean(pick('sub')).split(/[,，、/;；·]+/).map((x) => x.trim()).filter((x) => x && x !== lead))],
       });
     });
@@ -131,7 +132,7 @@
       const issued = stageIdx === LAST_STAGE;
       const base = p.type === '갱신' ? (p.expiry || p.received) : (p.received || p.expiry);
       const ym = base ? { y: +base.slice(0, 4), m: +base.slice(5, 7) } : { y: ty, m: p.month };
-      const procDeadline = p.received ? addDays(p.received, DEADLINE.days) : '';
+      const procDeadline = p.due || (p.received ? addDays(p.received, DEADLINE.days) : '');
       const expiryDue = p.type === '갱신' && p.expiry ? p.expiry : '';
       let deadline = '', dueBasis = '';
       if (expiryDue && (!procDeadline || expiryDue <= procDeadline)) { deadline = expiryDue; dueBasis = '인증만료'; }
@@ -168,19 +169,28 @@
    *  moved      : 일정의 월이 배정월과 다름
    *  unplanned  : 일정은 있는데 배정표에 없음
    */
-  function reconcile(plan, rows, todayIso) {
+  function reconcile(plan, rows, todayIso, opts) {
     const ty = +todayIso.slice(0, 4), tm = +todayIso.slice(5, 7);
     const sched = schedMap(rows, ty);
+    // loose(인증 대장에서 가져온 자료): 일정 자료가 한 달치뿐이므로 일정이 들어 있는 달만 누락으로 판단하고,
+    // 대장에는 '연간 배정'이 없어 담당 변경·월 이동 비교는 의미가 없으므로 건너뜀
+    const loose = !!(opts && opts.loose);
+    const covered = loose ? new Set(rows.filter((r) => r.y === ty).map((r) => r.m)) : null;
+    // 이미 심사를 마친 건(현장심사 이후 단계)은 일정이 없어도 누락이 아님. 단계를 모르면(배정표에 진행단계 없음) 일정이 필요한 것으로 봄
+    const needsSchedule = (p) => !p.stage || STAGES.indexOf(p.stage) <= STAGES.indexOf('서류심사');
     const out = { missing: [], unscheduled: [], changed: [], moved: [], unplanned: [] };
     const planKeys = new Set();
     plan.forEach((p) => {
       planKeys.add(p.key);
       const hit = sched.get(p.key);
       if (!hit) {
+        if (!needsSchedule(p)) return;
+        if (covered && !covered.has(p.month)) return;
         if (p.month < tm) out.missing.push({ company: p.company, lead: p.lead, month: p.month });
         else if (p.month === tm) out.unscheduled.push({ company: p.company, lead: p.lead, month: p.month });
         return;
       }
+      if (loose) return;
       const r = hit[0];
       if (r.lead !== p.lead) out.changed.push({ company: p.company, planLead: p.lead, actualLead: r.lead });
       if (r.m !== p.month) out.moved.push({ company: p.company, planMonth: p.month, actualMonth: r.m, lead: r.lead });

@@ -20,9 +20,10 @@
     const [rec, tk, ak] = await Promise.all([D.fetchRecords(), D.fetchTasks(), D.fetchAcks()]);
     rows = R.parseRecords(rec).rows; tasks = T.parseTasks(tk).tasks; acks = AK.parseAcks(ak).acks;
     const names = [...new Set(rows.flatMap((r) => [r.lead, ...r.subs]))].sort((a, b) => a.localeCompare(b, 'ko'));
+    if (!names.length) { $('summary').textContent = '표시할 배정이 없습니다. 일정(놉스)을 가져오기 화면에서 적용해 주세요.'; $('who').innerHTML = ''; return; }
     who = names.includes(params.get('as')) ? params.get('as') : names.includes(store.get()) ? store.get() : names[0];
     $('who').innerHTML = names.map((n) => `<option${n === who ? ' selected' : ''}>${esc(n)}</option>`).join('');
-    $('demo').textContent = D.DEMO ? `※ 시안입니다. 샘플 데이터이며 확인 기록은 이 브라우저에만 저장됩니다. 기준일 ${D.todayIso()}` : '';
+    $('demo').textContent = D.DEMO ? `※ 시안입니다. 샘플 데이터이며 확인 기록은 이 브라우저에만 저장됩니다. 기준일 ${D.todayIso()}` : '※ 시안입니다. 가져온 데이터이며 확인 기록은 이 브라우저에만 저장됩니다.';
     render();
   }
 

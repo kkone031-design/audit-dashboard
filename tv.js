@@ -25,6 +25,7 @@
   const refDate = () => AuditData.today();
 
   function pickPeriod(now) {
+    if (!rows.length) return { y: now.getFullYear(), m: now.getMonth() + 1 };   // 일정 없이 인증 대장만 가져온 경우
     const ys = rows.map((r) => r.y);
     const y = ys.includes(now.getFullYear()) ? now.getFullYear() : Math.max(...ys);
     const ms = rows.filter((r) => r.y === y).map((r) => r.m);
@@ -34,7 +35,7 @@
 
   function render() {
     const now = refDate();
-    if (!rows.length) { $('today').innerHTML = '<p class="none">표시할 심사 데이터가 없습니다.</p>'; return; }
+    if (!rows.length && !plan.length) { $('today').innerHTML = '<p class="none">표시할 심사 데이터가 없습니다.</p>'; return; }
     const { y, m } = pickPeriod(now);
     const today = ymd(now);
     const assigns = R.buildAssignments(rows, { includeHold: false, farmOverrides: new Set() });
@@ -106,13 +107,13 @@
       + `<li class="okline">✔ 모두 확인: ${esc(everyone.filter((n) => !per.some((x) => x.n === n)).join(', ') || '없음')}</li>`;
 
     /* 화면 2: 점검 필요 */
-    const rc = C.reconcile(plan, rows, today);
+    const rc = C.reconcile(plan, rows, today, { loose: AuditData.IMPORTED });
     const conf = C.conflicts(rows).filter((c) => c.date >= today);
     const late = tasks.filter((t) => t.status !== '완료' && T.daysBetween(t.due, today) > 0)
       .map((t) => ({ ...t, late: T.daysBetween(t.due, today) })).sort((a, b) => b.late - a.late);
     const trend = R.monthlyTrend(C.planAssignments(plan, y), y);
     const crowd = [];
-    Object.keys(trend).forEach((n) => trend[n].forEach((v, i) => { if (i + 1 >= m && R.levelOf(v) !== 'ok') crowd.push({ name: n, m: i + 1, v, level: R.levelOf(v) }); }));
+    Object.keys(trend).filter((n) => !n.startsWith('(')).forEach((n) => trend[n].forEach((v, i) => { if (i + 1 >= m && R.levelOf(v) !== 'ok') crowd.push({ name: n, m: i + 1, v, level: R.levelOf(v) }); }));
     crowd.sort((a, b) => a.m - b.m || b.v - a.v);
     const diffN = rc.changed.length + rc.moved.length + rc.unplanned.length;
     const tile = (label, n, cls) => `<div class="tile ${n ? cls : 'ok'}"><b>${n ? n : '✔'}</b><span>${label}</span></div>`;
@@ -164,7 +165,7 @@
     const urgency = (c) => (c.overdue ? 0 : c.renewalRisk ? 1 : c.level === 'red' ? 2 : c.level === 'orange' ? 3 : 4);
     const dtag = (c, dense) => {
       if (c.stageIdx === LAST) return '';
-      if (c.renewalRisk) return `<span class="dt red">${dense ? '접수필요' : '접수 필요'} · 만료 D-${c.toExpiry}</span>`;
+      if (c.renewalRisk) return `<span class="dt red">${dense ? '접수필요' : '접수 필요'} · ${c.toExpiry < 0 ? '만료 +' + (-c.toExpiry) + '일' : '만료 D-' + c.toExpiry}</span>`;
       if (c.daysLeft == null) return '';
       const nm = c.dueBasis === '인증만료' ? '만료' : '기한';
       return c.daysLeft < 0 ? `<span class="dt red">${nm} +${-c.daysLeft}일${dense ? '' : (c.dueBasis === '인증만료' ? ' 경과' : ' 초과')}</span>` : `<span class="dt ${c.level}">${nm} D-${c.daysLeft}</span>`;
@@ -191,13 +192,13 @@
     const now_m = m;
     $('heat').innerHTML = plan.length
       ? `<div class="hr hd"><div></div>${Array.from({ length: 12 }, (_, i) => `<div class="${i + 1 === now_m ? 'now' : ''}">${i + 1}월</div>`).join('')}</div>` +
-        names.map((n) => `<div class="hr"><div class="nm">${esc(n)}</div>${Array.from({ length: 12 }, (_, i) => { const v = (trend[n] || [])[i] || 0; const lv = R.levelOf(v); return `<div class="${v ? (lv === 'ok' ? '' : 'c-' + lv) : 'c-none'}${i + 1 === now_m ? ' now' : ''}">${v ? fmt(v) : '–'}</div>`; }).join('')}</div>`).join('')
+        names.map((n) => `<div class="hr"><div class="nm">${esc(n)}</div>${Array.from({ length: 12 }, (_, i) => { const v = (trend[n] || [])[i] || 0; const lv = n.startsWith('(') ? 'ok' : R.levelOf(v); return `<div class="${v ? (lv === 'ok' ? '' : 'c-' + lv) : 'c-none'}${i + 1 === now_m ? ' now' : ''}">${v ? fmt(v) : '–'}</div>`; }).join('')}</div>`).join('')
       : '<p class="none">연간 배정표가 등록되어 있지 않습니다</p>';
     $('crowd').innerHTML = crowd.length
       ? crowd.slice(0, 10).map((c) => `<li><span class="d">${c.m}월</span><span class="who">${esc(c.name)}</span><span class="co"></span><span class="tag2 ${c.level === 'red' ? 'red' : 'orange'}">${fmt(c.v)}</span></li>`).join('') + (crowd.length > 10 ? `<li class="none">외 ${crowd.length - 10}건</li>` : '')
       : '<li class="okline">✔ 이번 달 이후 쏠림 없음</li>';
 
-    $('updated').textContent = DEMO ? `샘플 데이터 · 기준일 ${today}` : `데이터 갱신 ${new Date().toTimeString().slice(0, 8)}`;
+    $('updated').textContent = AuditData.IMPORTED ? `가져온 데이터 · ${AuditData.builtAt}` : DEMO ? `샘플 데이터 · 기준일 ${today}` : `데이터 갱신 ${new Date().toTimeString().slice(0, 8)}`;
   }
 
   function renderCal(y, m, now, mrows) {
@@ -251,7 +252,7 @@
     if (e.key === 'ArrowRight') { show(slide + 1); startRotate(); } else if (e.key === 'ArrowLeft') { show(slide - 1); startRotate(); }
   });
   const only = +params.get('slide'); // ?slide=2 로 특정 화면 고정(확인용)
-  window.addEventListener('storage', (e) => { if (e.key === AuditData.ACK_KEY) refresh(); }); // 같은 브라우저의 다른 탭(심사원 화면 시안)에서 확인하면 바로 반영
+  window.addEventListener('storage', (e) => { if (e.key === AuditData.ACK_KEY) refresh(); else if (e.key === AuditData.IMPORT_KEY) location.reload(); }); // 같은 브라우저의 다른 탭(심사원 화면 시안)에서 확인하면 바로 반영
   tickClock(); setInterval(tickClock, 1000);
   show(only >= 1 && only <= SLIDES.length ? only - 1 : 0); startRotate();
   refresh(); setInterval(refresh, REFRESH_SEC * 1000);
