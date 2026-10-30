@@ -10,7 +10,7 @@
   const params = new URLSearchParams(location.search);
   const ROTATE_SEC = Math.max(5, +params.get('sec') || 20);   // 화면 전환 간격(초) ?sec=30
   const REFRESH_SEC = 60;                                      // 데이터 다시 읽는 간격
-  const SLIDES = ['s1', 's6', 's2', 's5', 's3', 's4'];   // 화면 순서
+  const SLIDES = ['s1', 's6', 's2', 's7', 's5', 's3', 's4'];   // 화면 순서
   const MAX_TASKS = 4;                                         // 심사원 카드 1장에 보여 줄 항목 수
 
   /* 데이터 연동은 data.js에서 합니다 (지금은 샘플 + 이 브라우저 저장 시안) */
@@ -156,6 +156,27 @@
         list.slice(0, MAXK).map((c) => `<li class="${c.overdue ? 'od' : ''}"><span class="cn">${esc(c.company)}</span><span class="sub">${esc(c.field)} · ${esc(c.lead)}</span></li>`).join('') +
         (list.length > MAXK ? `<li class="more">외 ${list.length - MAXK}건</li>` : (list.length ? '' : '<li class="more">없음</li>')) + '</ul></div>';
     }).join('');
+
+    /* 화면 7: 최근 4개월 인증 진행 — 이번 달 기준 2개월 전 ~ 1개월 뒤 (?from=7 로 시작 달 지정) */
+    const fromQ = +params.get('from');
+    const start = fromQ >= 1 && fromQ <= 9 ? fromQ : Math.min(Math.max(m - 2, 1), 9);
+    const LAST = ST.length - 1;
+    $('m4').innerHTML = plan.length ? [0, 1, 2, 3].map((k) => {
+      const mon = start + k;
+      const all = cases.filter((c) => c.month === mon);
+      const open = all.filter((c) => c.stageIdx < LAST).sort((a, b) => b.overdue - a.overdue || b.stageIdx - a.stageIdx || a.company.localeCompare(b.company, 'ko'));
+      const doneN = all.length - open.length;
+      const counts = ST.map((_, i) => all.filter((c) => c.stageIdx === i).length);
+      const pastOpen = mon < m ? open.length : 0;
+      const MAXL = 12;
+      return `<div class="mp${mon === m ? ' cur' : ''}"><h3>${mon}월<small>${all.length}건</small>${mon === m ? '<span class="badge">이번 달</span>' : ''}</h3>` +
+        `<div class="sum">발급 완료 <b class="ok">${doneN}</b> · 진행 중 <b class="${pastOpen ? 'red' : ''}">${open.length}</b>${pastOpen ? ' <b class="red">(지난 달 · 지연)</b>' : ''}</div>` +
+        `<div class="sbar">${counts.map((c, i) => (c ? `<i class="s${i}" style="flex:${c}"></i>` : '')).join('')}</div>` +
+        `<div class="chips2">${counts.map((c, i) => (c ? `<span class="sc s${i}">${esc(ST[i])} ${c}</span>` : '')).join('')}</div>` +
+        `<h4>${open.length ? '아직 끝나지 않은 건' : ''}</h4><ul>` +
+        (open.length ? open.slice(0, MAXL).map((c) => `<li class="${c.overdue ? 'od' : ''}"><span class="tx"><span class="cn">${esc(c.company)}</span><span class="sub">${esc(c.field)} · ${esc(c.lead)}${c.overdue ? ' · 지연' : ''}</span></span><span class="sc s${c.stageIdx}">${esc(ST[c.stageIdx])}</span></li>`).join('') + (open.length > MAXL ? `<li class="more">외 ${open.length - MAXL}건</li>` : '')
+          : (all.length ? '<li class="okline">✔ 모두 발급 완료</li>' : '<li class="more">배정된 건 없음</li>')) + '</ul></div>';
+    }).join('') : '<p class="none">연간 배정표가 등록되어 있지 않습니다</p>';
 
     /* 화면 4: 연간 월별 부하(배정 기준) */
     const names = [...new Set([...Object.keys(trend), ...rows.map((r) => r.lead)])].sort((a, b) => a.localeCompare(b, 'ko'));
