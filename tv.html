@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>심사 현황판</title>
+<link rel="stylesheet" href="tv.css">
+</head>
+<body>
+<div class="board">
+  <header class="bar">
+    <div class="brand">
+      <h1>심사 현황판</h1>
+      <span id="period" class="period"></span>
+    </div>
+    <div id="alert" class="alert" aria-live="polite"></div>
+    <div class="clock"><div id="clock-time"></div><div id="clock-date"></div></div>
+  </header>
+
+  <section class="slide on" id="s1" aria-label="심사원별 맨데이">
+    <div class="load">
+      <div class="panel-head">
+        <h2>심사원별 월 맨데이</h2>
+        <div class="key"><i class="k ok"></i>정상 <i class="k orange"></i>18 이상 <i class="k red"></i>20 초과</div>
+      </div>
+      <div id="axis" class="axis"></div>
+      <div id="rows" class="rows"></div>
+    </div>
+    <aside class="side">
+      <div id="kpis" class="kpis"></div>
+      <div class="list">
+        <h2>오늘 심사 <small id="today-n"></small></h2>
+        <ul id="today"></ul>
+      </div>
+      <div class="list">
+        <h2>앞으로 7일 <small id="week-n"></small></h2>
+        <ul id="week"></ul>
+      </div>
+    </aside>
+  </section>
+
+  <section class="slide" id="s2" aria-label="월간 심사 일정">
+    <div id="cal" class="cal"></div>
+  </section>
+
+  <footer class="foot">
+    <div id="dots" class="dots"></div>
+    <span id="updated"></span>
+  </footer>
+</div>
+<script src="rules.js"></script>
+<script src="sample.js"></script>
+<script src="tv.js"></script>
+</body>
+</html>

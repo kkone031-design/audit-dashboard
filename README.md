@@ -42,6 +42,14 @@
 
 규칙을 바꾸려면 `rules.js` 맨 위의 상수(`LEAD_MANDAY`, `SUB_MANDAY`, `SUISAN`, `WARN`)만 수정하세요.
 
+## TV 현황판 (`tv.html`)
+벽면 TV용 전체화면 보드입니다. 현재는 내장 샘플 데이터로 동작하는 **디자인 시안**입니다.
+
+- 화면 1: 심사원별 월 맨데이 막대(18/20 기준선, 과부하는 빨강), 이번 달 건수, 오늘 심사, 앞으로 7일
+- 화면 2: 이번 달 전체 일정 달력(심사원별 색상, 오늘 강조)
+- 20초마다 화면 전환, 데이터는 60초마다 다시 읽음. `?sec=30`(전환 간격), `?rotate=0`(전환 끄기), 키보드 ←/→
+- 데이터 연동은 `tv.js`의 `fetchRecords()` 한 곳만 바꾸면 됩니다(엑셀 업로드와 같은 열 이름의 객체 배열을 반환).
+
 ## 테스트
 ```bash
 node tests/rules.test.js
@@ -50,4 +58,4 @@ node tests/rules.test.js
 경고 경계값, 샘플 데이터의 월별 맨데이를 독립 계산과 대조합니다.
 
 ## 파일 구성
-`index.html` 화면 · `style.css` 스타일 · `app.js` 화면 로직 · `rules.js` 규칙·집계 · `sample.js` 가상 샘플 · `tests/` 테스트
+`index.html` 화면 · `tv.html/tv.css/tv.js` TV 현황판 · `style.css` 스타일 · `app.js` 화면 로직 · `rules.js` 규칙·집계 · `sample.js` 가상 샘플 · `tests/` 테스트
