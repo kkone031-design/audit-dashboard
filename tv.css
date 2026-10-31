@@ -155,6 +155,16 @@ h2 small { color: var(--accent); font-weight: 700; font-size: 1.2rem; margin-lef
 .mp .okline { font-size: 1.2rem; }
 .mp .more { color: var(--muted); font-size: 1rem; border-top: 0; }
 
+/* 화면 8: 조치 필요 */
+.act-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 2.3fr 1fr; gap: 1.2rem; }
+.act-grid .panel { min-height: 0; overflow: hidden; }
+.act-grid .plain { flex: 1; min-height: 0; overflow: hidden; }
+.act li { font-size: 1.2rem; padding: .34rem 0; }
+.plain.act .lv { flex: 0 0 6.6rem; white-space: nowrap; }
+.act-note { margin: .4rem 0 0; color: var(--muted); font-size: 1.05rem; }
+.act .co small { color: var(--muted); font-size: 1rem; }
+.lv.orange { background: var(--orange); color: #241500; }
+
 /* 화면 6: 배정 확인 대기 */
 .checks.four { grid-template-columns: repeat(4, 1fr); }
 .ack-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 2.2fr 1fr; gap: 1.2rem; }
@@ -230,6 +240,7 @@ h2 small { color: var(--accent); font-weight: 700; font-size: 1.2rem; margin-lef
   .cards { grid-auto-rows: auto; }
   .mbars { height: 9rem; } .kanban { grid-template-columns: 1fr; } .kc ul { overflow: visible; }
   .m4 { grid-template-columns: 1fr; } .mp ul { overflow: visible; }
+  .act-grid { grid-template-columns: 1fr; }
   .checks, .checks.four { grid-template-columns: repeat(2, 1fr); } .ack-grid { grid-template-columns: 1fr; } .chk-grid { grid-template-columns: 1fr; }
   .heat { overflow-x: auto; } .hr { min-width: 34rem; } .hr > div { font-size: .9rem; } .hr .nm { font-size: 1rem; }
   .cd { min-height: 4rem; }

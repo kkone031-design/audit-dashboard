@@ -10,7 +10,11 @@
   const params = new URLSearchParams(location.search);
   const ROTATE_SEC = Math.max(5, +params.get('sec') || 20);   // 화면 전환 간격(초) ?sec=30
   const REFRESH_SEC = 60;                                      // 데이터 다시 읽는 간격
-  const SLIDES = ['s1', 's6', 's2', 's7', 's5', 's3', 's4'];   // 화면 순서
+  // 화면 순서. 기본은 핵심 4개 화면만 순환하고, ?all=1 이면 모든 화면, ?slide=s2 처럼 화면 번호를 주면 그 화면만 표시
+  const ALL_SLIDES = ['s1', 's8', 's6', 's2', 's7', 's5', 's3', 's4'];
+  const CORE_SLIDES = ['s1', 's8', 's7', 's4'];
+  const slideParam = params.get('slide') || '';
+  const SLIDES = ALL_SLIDES.includes(slideParam) ? [slideParam] : params.get('all') === '1' ? ALL_SLIDES : CORE_SLIDES;
   const MAX_TASKS = 4;                                         // 심사원 카드 1장에 보여 줄 항목 수
 
   /* 데이터 연동은 data.js에서 합니다 (지금은 샘플 + 이 브라우저 저장 시안) */
@@ -187,6 +191,47 @@
           : (all.length ? '<li class="okline">✔ 모두 발급 완료</li>' : '<li class="more">해당 건 없음</li>')) + '</ul></div>';
     }).join('') : '<p class="none">연간 배정표가 등록되어 있지 않습니다</p>';
 
+    /* 화면 8: 조치 필요 — 기한 초과, 확인 지연, 일정 충돌·누락, 보고서 지연을 한 목록으로 합쳐 급한 순으로 */
+    const NLAST = ST.length - 1, mdd = (iso) => `${+iso.slice(5, 7)}/${+iso.slice(8)}`;
+    const acts = [];
+    // 목록은 5개월 범위(2개월 전~2개월 뒤)의 건만. 범위 밖의 오래된 미처리 건은 건수만 따로 알림
+    const win8 = C.monthWindow(y, m, 2, 2), inWin = (c) => win8.some((w) => w.y === c.ym.y && w.m === c.ym.m);
+    const oldOpen = cases.filter((c) => c.stageIdx < NLAST && !inWin(c) && (c.overdue || c.renewalRisk)).length;
+    cases.filter((c) => c.stageIdx < NLAST && inWin(c)).forEach((c) => {
+      const nm = c.dueBasis === '인증만료' ? '만료' : '기한';
+      if (c.renewalRisk) acts.push({ rank: 1, sev: 'red', tag: '접수 필요', who: c.lead, text: c.company, sub: c.type, when: c.toExpiry < 0 ? `만료 +${-c.toExpiry}일` : `만료 D-${c.toExpiry}`, mag: c.toExpiry });
+      else if (c.overdue) acts.push({ rank: 0, sev: 'red', tag: nm === '만료' ? '만료 경과' : '기한 초과', who: c.lead, text: c.company, sub: ST[c.stageIdx], when: c.daysLeft == null ? '소속 월 경과' : `${nm} +${-c.daysLeft}일`, mag: c.daysLeft == null ? -999 : c.daysLeft });
+      else if (c.level === 'red') acts.push({ rank: 4, sev: 'red', tag: '기한 촉박', who: c.lead, text: c.company, sub: ST[c.stageIdx], when: `${nm} D-${c.daysLeft}`, mag: c.daysLeft });
+      else if (c.level === 'orange') acts.push({ rank: 7, sev: 'orange', tag: '기한 임박', who: c.lead, text: c.company, sub: ST[c.stageIdx], when: `${nm} D-${c.daysLeft}`, mag: c.daysLeft });
+    });
+    pend.filter((p) => p.level !== 'normal').forEach((p) => acts.push({ rank: p.level === 'red' ? 2 : 8, sev: p.level === 'red' ? 'red' : 'orange', tag: p.level === 'red' ? '확인 지연' : '확인 주의', who: p.auditor, text: p.company, sub: `${mdd(p.date)} 심사`, when: p.waitDays ? `등록 후 ${p.waitDays}일` : `D-${p.daysToAudit}`, mag: -p.waitDays }));
+    conf.forEach((c) => acts.push({ rank: 3, sev: 'red', tag: '일정 충돌', who: c.auditor, text: c.companies.join(' / '), sub: mdd(c.date), when: `${c.companies.length}건 중복`, mag: 0 }));
+    late.forEach((t) => acts.push({ rank: 5, sev: 'orange', tag: '보고서 지연', who: t.owner, text: t.title, sub: t.company, when: `지연 ${t.late}일`, mag: -t.late }));
+    rc.missing.forEach((x) => acts.push({ rank: 6, sev: 'orange', tag: '일정 누락', who: x.lead, text: x.company, sub: `${x.month}월 배정`, when: `${m - x.month}개월 경과`, mag: x.month - m }));
+    rc.unscheduled.forEach((x) => acts.push({ rank: 6, sev: 'orange', tag: '일정 미확정', who: x.lead, text: x.company, sub: `${x.month}월 배정`, when: '이번 달', mag: 0 }));
+    acts.sort((a, b) => a.rank - b.rank || a.mag - b.mag || a.who.localeCompare(b.who, 'ko'));
+    const cnt = (...ranks) => acts.filter((a) => ranks.includes(a.rank)).length;
+    $('actTiles').style.gridTemplateColumns = 'repeat(5, 1fr)';
+    $('actTiles').innerHTML = atile('기한 초과 · 접수 필요', cnt(0, 1), 'red') + atile('확인 지연', cnt(2), 'red') + atile('기한 촉박 · 임박', cnt(4, 7), 'orange')
+      + atile('일정 충돌 · 누락', cnt(3, 6), 'orange') + atile('보고서 지연', cnt(5), 'orange');
+    $('n-act').textContent = acts.length ? `${acts.length}건 · 급한 순` : '';
+    // 한 종류가 목록을 독차지하지 않도록, 종류(태그)마다 먼저 3건씩 고르고 남는 자리는 급한 순으로 채움. 표시 순서는 항상 급한 순
+    const MAXACT = 15, PER_TAG = 3;
+    const picked = new Set(), perTag = {};
+    acts.forEach((a, i) => { perTag[a.tag] = perTag[a.tag] || 0; if (perTag[a.tag] < PER_TAG && picked.size < MAXACT) { picked.add(i); perTag[a.tag]++; } });
+    acts.forEach((a, i) => { if (picked.size < MAXACT && !picked.has(i)) picked.add(i); });
+    const shownActs = acts.filter((_, i) => picked.has(i));
+    $('l-act').innerHTML = acts.length
+      ? shownActs.map((a) => `<li><span class="lv ${a.sev}">${esc(a.tag)}</span><span class="who">${esc(a.who)}</span><span class="co">${esc(a.text)}${a.sub ? ` <small>${esc(a.sub)}</small>` : ''}</span><span class="tag2 ${a.sev}">${esc(a.when)}</span></li>`).join('') + (acts.length > shownActs.length ? `<li class="none">종류별로 골고루 ${shownActs.length}건 표시 · 외 ${acts.length - shownActs.length}건</li>` : '')
+      : '<li class="okline">✔ 지금 조치가 필요한 건이 없습니다</li>';
+    $('act-note').textContent = oldOpen ? `※ 5개월 범위 밖의 오래된 미처리 ${oldOpen}건(기한·만료 경과)은 이 목록에서 제외했습니다. 별도 점검이 필요합니다.` : '';
+    const byWho = new Map();
+    acts.forEach((a) => { const w = byWho.get(a.who) || { n: 0, red: 0, worst: a }; w.n++; if (a.sev === 'red') w.red++; byWho.set(a.who, w); });
+    const whoList = [...byWho.entries()].sort((a, b) => b[1].red - a[1].red || b[1].n - a[1].n);
+    $('l-actp').innerHTML = whoList.length
+      ? whoList.slice(0, 12).map(([n, w]) => `<li><span class="who">${esc(n)}</span><span class="co"></span><span class="tag2 ${w.red ? 'red' : 'orange'}">${w.n}건${w.red ? ` · 긴급 ${w.red}` : ''}</span></li>`).join('') + (whoList.length > 12 ? `<li class="none">외 ${whoList.length - 12}명</li>` : '')
+      : '<li class="okline">✔ 없음</li>';
+
     /* 화면 4: 연간 월별 부하(배정 기준) */
     const names = [...new Set([...Object.keys(trend), ...rows.map((r) => r.lead)])].sort((a, b) => a.localeCompare(b, 'ko'));
     const now_m = m;
@@ -230,6 +275,7 @@
 
   function show(i) {
     slide = (i + SLIDES.length) % SLIDES.length;
+    document.querySelectorAll('.slide').forEach((e) => e.classList.remove('on'));   // 순환 대상이 아닌 화면(기본으로 켜진 첫 화면 포함)은 끔
     SLIDES.forEach((id, k) => $(id).classList.toggle('on', k === slide));
     document.querySelectorAll('.dot').forEach((d, k) => d.classList.toggle('on', k === slide));
   }
@@ -251,7 +297,7 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowRight') { show(slide + 1); startRotate(); } else if (e.key === 'ArrowLeft') { show(slide - 1); startRotate(); }
   });
-  const only = +params.get('slide'); // ?slide=2 로 특정 화면 고정(확인용)
+  const only = /^\d+$/.test(slideParam) ? +slideParam : 0; // ?slide=2 는 표시 중인 화면 목록의 2번째로 고정(확인용)
   window.addEventListener('storage', (e) => { if (e.key === AuditData.ACK_KEY) refresh(); else if (e.key === AuditData.IMPORT_KEY) location.reload(); }); // 같은 브라우저의 다른 탭(심사원 화면 시안)에서 확인하면 바로 반영
   tickClock(); setInterval(tickClock, 1000);
   show(only >= 1 && only <= SLIDES.length ? only - 1 : 0); startRotate();

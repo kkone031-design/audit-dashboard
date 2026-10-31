@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>심사 현황판</title>
-<link rel="stylesheet" href="tv.css?v=20261030f">
+<link rel="stylesheet" href="tv.css?v=20261030h">
 </head>
 <body>
 <div class="board">
@@ -35,6 +35,15 @@
         <div class="key"><span class="ic a">▶</span>심사 <span class="ic l">!</span>지연 <span class="ic d">□</span>오늘 마감 <span class="ic ok">✓</span>완료</div>
       </div>
       <div id="people" class="people"></div>
+    </div>
+  </section>
+
+  <!-- 화면 8: 조치 필요 (기한·확인·점검·보고서를 한 목록으로 합쳐 급한 순) -->
+  <section class="slide col" id="s8" aria-label="조치 필요">
+    <div id="actTiles" class="checks"></div>
+    <div class="act-grid">
+      <div class="panel"><h2>지금 조치가 필요한 건 <small id="n-act"></small></h2><ul id="l-act" class="plain act"></ul><p id="act-note" class="act-note"></p></div>
+      <div class="panel"><h2>담당자별 조치 건수</h2><ul id="l-actp" class="plain"></ul></div>
     </div>
   </section>
 
@@ -104,12 +113,12 @@
     <span id="updated"></span>
   </footer>
 </div>
-<script src="rules.js?v=20261030f"></script>
-<script src="sample.js?v=20261030f"></script>
-<script src="tasks.js?v=20261030f"></script>
-<script src="check.js?v=20261030f"></script>
-<script src="ack.js?v=20261030f"></script>
-<script src="data.js?v=20261030f"></script>
-<script src="tv.js?v=20261030f"></script>
+<script src="rules.js?v=20261030h"></script>
+<script src="sample.js?v=20261030h"></script>
+<script src="tasks.js?v=20261030h"></script>
+<script src="check.js?v=20261030h"></script>
+<script src="ack.js?v=20261030h"></script>
+<script src="data.js?v=20261030h"></script>
+<script src="tv.js?v=20261030h"></script>
 </body>
 </html>
