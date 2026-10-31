@@ -272,6 +272,28 @@
   eq('대장 모드(loose): 일정이 들어 있는 달(10월)만 판단, 지난 달 배정은 알 수 없어 제외', [loose.missing.length, loose.unscheduled.map((x) => x.company)], [0, ['접수중']]);
   eq('대장 모드: 담당 변경·월 이동은 비교하지 않고, 대장에 없는 일정은 그대로 알림', [loose.changed.length, loose.moved.length, loose.unplanned.map((x) => x.company)], [0, 0, ['대장없음']]);
 
+  // 16) 부문(농축산/수산)과 부문별 처리기한
+  eq('부문 판정: 수산·수산가공=수산, 그 밖(해외 포함)=농축산', [CK.divOfField('수산'), CK.divOfField('수산가공'), CK.divOfField('유기가공'), CK.divOfField(''), CK.divOfField('유기수산물')], ['수산', '수산', '농축산', '농축산', '수산']);
+  const dp = CK.parsePlan([
+    { '업체명': 'D1', '정심사원': '갑', '배정월': 3, '인증분야': '수산' },
+    { '업체명': 'D2', '정심사원': '갑', '배정월': 3, '인증분야': '유기가공' },
+    { '업체명': 'D3', '정심사원': '갑', '배정월': 3, '인증분야': '유기가공', '부문': '수산' },
+  ]).plan;
+  eq('부문 열이 없으면 분야로 판정, 있으면 부문 열 우선', dp.map((x) => x.div), ['수산', '농축산', '수산']);
+  const ls = LG.parseSheet([['t'], [], H1, mkRow({ 연번: 1, 인증분류: '유기가공식품', 생산자: '해외농장', 구분: '갱신', 심사원: '갑', 접수일: '2026-10-01' })], '해외', '2026-10-30').cases[0];
+  const lsu = LG.parseSheet([['t'], [], HS, suRow], '수산', '2026-10-30').cases[0];
+  eq('대장 시트 → 부문: 해외·국내는 농축산, 수산 시트는 수산', [ls.div, lg.cases[0].div, lsu.div], ['농축산', '농축산', '수산']);
+  eq('연간표 변환에 부문이 들어감', LG.toPlanRecords([ls, lsu]).records.map((r) => r['부문']), ['농축산', '수산']);
+  const save = { ...CK.DEADLINE.daysByDiv };
+  CK.DEADLINE.daysByDiv['수산'] = 45;
+  const dc = CK.caseStages(CK.parsePlan([
+    { '업체명': 'N1', '정심사원': '갑', '구분': '신규', '접수일': '2026-10-01', '진행단계': '접수', '인증분야': '유기가공' },
+    { '업체명': 'S1', '정심사원': '갑', '구분': '신규', '접수일': '2026-10-01', '진행단계': '접수', '인증분야': '수산' },
+    { '업체명': 'S2', '정심사원': '갑', '구분': '신규', '접수일': '2026-10-01', '진행단계': '접수', '인증분야': '수산', '처리기한': '2026-12-31' },
+  ]).plan, [], '2026-10-30');
+  CK.DEADLINE.daysByDiv['수산'] = save['수산'];
+  eq('부문별 처리기한: 농축산 60일, 수산 45일(설정 시), 대장의 처리기한 열이 있으면 그 값', dc.map((c) => c.deadline), ['2026-11-30', '2026-11-15', '2026-12-31']);
+
   const text = out.join('\n') + `\n\n${out.length - fail}/${out.length} 통과`;
   if (typeof document !== 'undefined') { document.getElementById('out').textContent = text; document.title = fail ? 'FAIL' : 'PASS'; }
   else { console.log(text); if (fail) process.exit(1); }

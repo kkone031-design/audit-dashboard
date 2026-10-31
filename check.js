@@ -15,7 +15,14 @@
      urgent: 이 일수 이하면 '촉박'(빨강)
      renewalNotice: 갱신 건의 인증 만료일까지 이 일수 이하로 남았는데 아직 접수 전이면 '접수 필요'(빨강)
      slow  : 접수 후 이 일수가 지나도록 발급 전이면 경과일을 주황으로 표시 (60일을 넘으면 빨강) */
-  const DEADLINE = { days: 60, warn: 14, urgent: 7, renewalNotice: 30, slow: 30 };
+  const DEADLINE = { days: 60, warn: 14, urgent: 7, renewalNotice: 30, slow: 30,
+    // 부문별 처리기한(일). 대장에 처리기한 날짜가 있으면 그 값을 쓰고, 없을 때만 접수일에 이 일수를 더함. 부문별로 다르면 여기서 고침
+    daysByDiv: { 농축산: 60, 수산: 60 } };
+  /* ===== 부문 — 해외는 농축산에 포함 ===== */
+  const DIVS = ['농축산', '수산'];
+  const SUISAN_FIELDS = ['수산', '수산가공'];
+  const divOfField = (field) => (SUISAN_FIELDS.includes(String(field || '').trim()) || /수산/.test(String(field || '')) ? '수산' : '농축산');
+  const parseDiv = (v) => { const t = String(v == null ? '' : v); return /수산/.test(t) ? '수산' : /농|축|해외|국내/.test(t) ? '농축산' : ''; };
 
   // 연간 배정표 열 이름 (공백 제거 후 비교). 배정월: 3 / 3월 / 2026-03 모두 가능
   const ALIASES = {
@@ -27,6 +34,7 @@
     month: ['배정월', '예정월', '심사월', '월'],
     farms: ['표본어가수', '표본어가'],
     stage: ['진행단계', '인증단계', '단계'],
+    div: ['부문', '담당부문', '팀'],               // 농축산 / 수산 (해외는 농축산)
     type: ['구분', '신청구분', '인증구분'],        // 신규 / 갱신
     received: ['접수일', '접수일자'],
     due: ['처리기한', '처리기한일'],               // 대장에 처리기한(연장 반영 포함)이 있으면 그 값을 우선 사용
@@ -83,6 +91,7 @@
       const farms = f !== '' && isFinite(parseFloat(f)) ? parseFloat(f) : null;
       plan.push({
         key: coKey(company), company, field: clean(pick('field')), lead, region: clean(pick('region')), month, farms, stage, type, received, expiry, due: dateOf(pick('due')),
+        div: parseDiv(pick('div')) || divOfField(clean(pick('field'))),
         subs: [...new Set(clean(pick('sub')).split(/[,，、/;；·]+/).map((x) => x.trim()).filter((x) => x && x !== lead))],
       });
     });
@@ -132,7 +141,8 @@
       const issued = stageIdx === LAST_STAGE;
       const base = p.type === '갱신' ? (p.expiry || p.received) : (p.received || p.expiry);
       const ym = base ? { y: +base.slice(0, 4), m: +base.slice(5, 7) } : { y: ty, m: p.month };
-      const procDeadline = p.due || (p.received ? addDays(p.received, DEADLINE.days) : '');
+      const limitDays = (DEADLINE.daysByDiv && DEADLINE.daysByDiv[p.div]) || DEADLINE.days;
+      const procDeadline = p.due || (p.received ? addDays(p.received, limitDays) : '');
       const expiryDue = p.type === '갱신' && p.expiry ? p.expiry : '';
       let deadline = '', dueBasis = '';
       if (expiryDue && (!procDeadline || expiryDue <= procDeadline)) { deadline = expiryDue; dueBasis = '인증만료'; }
@@ -143,7 +153,7 @@
       const level = issued || daysLeft == null ? '' : daysLeft < 0 || daysLeft <= DEADLINE.urgent ? 'red' : daysLeft <= DEADLINE.warn ? 'orange' : '';
       const toExpiry = p.expiry ? daysBetween(todayIso, p.expiry) : null;
       const renewalRisk = !issued && p.type === '갱신' && !p.received && toExpiry != null && toExpiry <= DEADLINE.renewalNotice;
-      return { ...p, month: ym.m, ym, stage, stageIdx, derived, procDeadline, deadline, dueBasis, daysLeft, elapsed, toExpiry, overdue, level, renewalRisk };
+      return { ...p, month: ym.m, ym, stage, stageIdx, derived, limitDays, procDeadline, deadline, dueBasis, daysLeft, elapsed, toExpiry, overdue, level, renewalRisk };
     });
   }
 
@@ -211,5 +221,5 @@
     return [...by.values()].filter((c) => c.companies.length > 1).sort((a, b) => a.date.localeCompare(b.date) || a.auditor.localeCompare(b.auditor, 'ko'));
   }
 
-  return { STAGES, DEADLINE, parseStage, parsePlan, planAssignments, reconcile, conflicts, parseMonth, caseStages, stageCounts, monthWindow };
+  return { STAGES, DEADLINE, DIVS, divOfField, coKey, parseStage, parsePlan, planAssignments, reconcile, conflicts, parseMonth, caseStages, stageCounts, monthWindow };
 }));

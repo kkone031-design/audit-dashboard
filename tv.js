@@ -1,18 +1,17 @@
-/* TV 현황판. 맨데이 계산은 rules.js, 할일 계산은 tasks.js를 사용합니다. */
+/* TV 현황판. 할일은 tasks.js, 기한·단계는 check.js, 배정 확인은 ack.js를 사용합니다. 농축산(해외 포함)/수산 부문을 건마다 표시합니다. */
 (function () {
   'use strict';
   const R = AuditRules, T = AuditTasks, C = AuditCheck, AK = AuditAck;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const fmt = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
   const DOW = ['일', '월', '화', '수', '목', '금', '토'];
   const COLORS = ['#6cb6ff', '#7fd1ae', '#c49bff', '#ffd166', '#ff9e7d', '#5ee0e0', '#f78fb3', '#b5d96a', '#9fb4ff', '#e0a96d'];
   const params = new URLSearchParams(location.search);
   const ROTATE_SEC = Math.max(5, +params.get('sec') || 20);   // 화면 전환 간격(초) ?sec=30
   const REFRESH_SEC = 60;                                      // 데이터 다시 읽는 간격
   // 화면 순서. 기본은 핵심 4개 화면만 순환하고, ?all=1 이면 모든 화면, ?slide=s2 처럼 화면 번호를 주면 그 화면만 표시
-  const ALL_SLIDES = ['s1', 's8', 's6', 's2', 's7', 's5', 's3', 's4'];
-  const CORE_SLIDES = ['s1', 's8', 's7', 's4'];
+  const ALL_SLIDES = ['s1', 's8', 's7', 's6', 's2', 's5', 's3'];
+  const CORE_SLIDES = ['s1', 's8', 's7'];
   const slideParam = params.get('slide') || '';
   const SLIDES = ALL_SLIDES.includes(slideParam) ? [slideParam] : params.get('all') === '1' ? ALL_SLIDES : CORE_SLIDES;
   const MAX_TASKS = 4;                                         // 심사원 카드 1장에 보여 줄 항목 수
@@ -22,6 +21,24 @@
   const { fetchRecords, fetchTasks, fetchPlan, fetchAcks } = AuditData;
 
   let rows = [], tasks = [], plan = [], acks = [];
+  let allRows = [], allTasks = [], allPlan = [], allAcks = [];
+  // 부문 보기: '' = 전체, '농축산', '수산'. ?div=수산 로 시작하고 D 키로 전환
+  const divParam = (params.get('div') || params.get('부문') || '').trim();
+  let divFilter = C.DIVS.includes(divParam) ? divParam : '';
+  let divOfName = () => '';
+  const divBadge = (d) => (d && !divFilter ? `<span class="dv ${d === '수산' ? 'dv-s' : 'dv-n'}" title="${d}">${d === '수산' ? '수산' : '농축'}</span>` : '');
+  const rowBadge = (r) => divBadge(divOfName(r.company, r.field));
+
+  /** 전체 자료에서 부문 보기에 맞는 것만 골라 화면용 목록(rows/plan/tasks/acks)을 만든다. 겸하는 심사원은 건의 부문으로 나뉘므로 양쪽에 모두 나온다 */
+  function applyFilter() {
+    const planDiv = new Map(allPlan.map((p) => [C.coKey(p.company), p.div]));
+    divOfName = (company, field) => planDiv.get(C.coKey(company)) || C.divOfField(field);
+    if (!divFilter) { rows = allRows; plan = allPlan; tasks = allTasks; acks = allAcks; return; }
+    rows = allRows.filter((r) => divOfName(r.company, r.field) === divFilter);
+    plan = allPlan.filter((p) => p.div === divFilter);
+    tasks = allTasks.filter((t) => !t.company || divOfName(t.company, '') === divFilter);
+    acks = allAcks;
+  }
   let slide = 0, timer = null;
 
   const ymd = (d) => R.isoDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
@@ -42,29 +59,23 @@
     if (!rows.length && !plan.length) { $('today').innerHTML = '<p class="none">표시할 심사 데이터가 없습니다.</p>'; return; }
     const { y, m } = pickPeriod(now);
     const today = ymd(now);
-    const assigns = R.buildAssignments(rows, { includeHold: false, farmOverrides: new Set() });
-    const sum = R.summarize(assigns, y, m).sort((a, b) => b.manday - a.manday || a.name.localeCompare(b.name, 'ko'));
-    const mdOf = new Map(sum.map((s) => [s.name, s]));
     $('period').textContent = `${y}년 ${m}월`;
 
-    /* 상단: 과부하는 작은 배지로 */
-    const warn = sum.filter((s) => s.level !== 'ok');
-    $('alert').innerHTML = warn.length
-      ? `<span>맨데이 주의</span>` + warn.map((s) => `<span class="tag ${s.level}">${esc(s.name)} ${fmt(s.manday)}</span>`).join('')
-      : '<span>맨데이 주의 대상 없음</span>';
+    /* 상단: 부문 보기 표시 (D 키로 전환) */
+    $('alert').innerHTML = ['전체', ...C.DIVS].map((n) => `<span class="dvsel${(divFilter || '전체') === n ? ' on' : ''}">${n}</span>`).join('') + '<span class="dvhint">D 키로 전환</span>';
 
     /* 화면 1-좌: 오늘 심사, 앞으로 7일 */
     const td = live().filter((r) => r.date === today);
     $('today-n').textContent = td.length ? `${td.length}건` : '';
     const MAXC = 5;
     $('today').innerHTML = td.length
-      ? td.slice(0, MAXC).map((r) => `<div class="card ${r.status === '완료' ? 'done' : ''}"><div class="co">${esc(r.company)}<span class="pill ${r.status === '예정' ? 'plan' : ''}">${esc(r.status)}</span></div><div class="who"><b>정 ${esc(r.lead)}</b>${r.subs.length ? ` · 부 ${esc(r.subs.join(', '))}` : ''}</div><div class="meta">${esc(r.field)}${r.region ? ' · ' + esc(r.region) : ''}</div></div>`).join('') + (td.length > MAXC ? `<div class="none">외 ${td.length - MAXC}건</div>` : '')
+      ? td.slice(0, MAXC).map((r) => `<div class="card ${r.status === '완료' ? 'done' : ''}"><div class="co">${rowBadge(r)}${esc(r.company)}<span class="pill ${r.status === '예정' ? 'plan' : ''}">${esc(r.status)}</span></div><div class="who"><b>정 ${esc(r.lead)}</b>${r.subs.length ? ` · 부 ${esc(r.subs.join(', '))}` : ''}</div><div class="meta">${esc(r.field)}${r.region ? ' · ' + esc(r.region) : ''}</div></div>`).join('') + (td.length > MAXC ? `<div class="none">외 ${td.length - MAXC}건</div>` : '')
       : '<p class="none">오늘 예정된 심사가 없습니다</p>';
     const end = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7));
     const wk = live().filter((r) => r.date > today && r.date <= end).sort((a, b) => a.date.localeCompare(b.date));
     $('week-n').textContent = wk.length ? `${wk.length}건` : '';
     $('week').innerHTML = wk.length
-      ? wk.slice(0, 4).map((r) => `<li><span class="d">${r.m}/${r.d}(${DOW[new Date(r.y, r.m - 1, r.d).getDay()]})</span><span class="who">${esc(r.lead)}</span><span class="co">${esc(r.company)}</span><span class="fd">${esc(r.field)}</span></li>`).join('') + (wk.length > 4 ? `<li class="none">외 ${wk.length - 4}건</li>` : '')
+      ? wk.slice(0, 4).map((r) => `<li><span class="d">${r.m}/${r.d}(${DOW[new Date(r.y, r.m - 1, r.d).getDay()]})</span><span class="who">${esc(r.lead)}</span><span class="co">${rowBadge(r)}${esc(r.company)}</span><span class="fd">${esc(r.field)}</span></li>`).join('') + (wk.length > 4 ? `<li class="none">외 ${wk.length - 4}건</li>` : '')
       : '<li class="none">예정된 심사가 없습니다</li>';
 
     /* 화면 1-우: 심사원별 오늘의 할일 */
@@ -80,9 +91,7 @@
             : { cls: 'due', ic: '<span class="ic d">□</span>', t: `${esc(t.title)}${t.company ? ` <small>${esc(t.company)}</small>` : ''}`, em: '오늘 마감' }),
       ];
       const shown = items.length > MAX_TASKS ? items.slice(0, MAX_TASKS - 1) : items;
-      const s = mdOf.get(p.name);
-      const md = s ? `<span class="md ${s.level === 'ok' ? '' : s.level}">맨데이 ${fmt(s.manday)}</span>` : '';
-      return `<div class="pc${items.length ? ' busy' : ''}"><div class="ph"><span class="pn">${esc(p.name)}</span>${md}</div><ul class="tl">` +
+      return `<div class="pc${items.length ? ' busy' : ''}"><div class="ph"><span class="pn">${esc(p.name)}</span></div><ul class="tl">` +
         (shown.length ? shown.map((i) => `<li class="${i.cls}">${i.ic}<span class="t">${i.t}</span>${i.em ? `<em>${i.em}</em>` : ''}</li>`).join('') + (items.length > shown.length ? `<li class="more">외 ${items.length - shown.length}건</li>` : '') : '<li class="none">오늘 등록된 할일 없음</li>') + '</ul></div>';
     }).join('');
 
@@ -115,15 +124,12 @@
     const conf = C.conflicts(rows).filter((c) => c.date >= today);
     const late = tasks.filter((t) => t.status !== '완료' && T.daysBetween(t.due, today) > 0)
       .map((t) => ({ ...t, late: T.daysBetween(t.due, today) })).sort((a, b) => b.late - a.late);
-    const trend = R.monthlyTrend(C.planAssignments(plan, y), y);
-    const crowd = [];
-    Object.keys(trend).filter((n) => !n.startsWith('(')).forEach((n) => trend[n].forEach((v, i) => { if (i + 1 >= m && R.levelOf(v) !== 'ok') crowd.push({ name: n, m: i + 1, v, level: R.levelOf(v) }); }));
-    crowd.sort((a, b) => a.m - b.m || b.v - a.v);
     const diffN = rc.changed.length + rc.moved.length + rc.unplanned.length;
     const tile = (label, n, cls) => `<div class="tile ${n ? cls : 'ok'}"><b>${n ? n : '✔'}</b><span>${label}</span></div>`;
     $('checks').innerHTML = tile('일정 누락·미확정', rc.missing.length + rc.unscheduled.length, rc.missing.length ? 'red' : 'orange')
       + tile('일정 충돌', conf.length, 'red') + tile('배정표와 다른 건', diffN, 'orange')
-      + tile('보고서 지연', late.length, 'red') + tile('쏠림 예상(남은 달)', crowd.length, crowd.some((c) => c.level === 'red') ? 'red' : 'orange');
+      + tile('보고서 지연', late.length, 'red');
+    $('checks').style.gridTemplateColumns = 'repeat(4, 1fr)';
     const fill = (ul, nEl, items, render, max) => {
       $(nEl).textContent = items.length ? `${items.length}건` : '';
       $(ul).innerHTML = items.length ? items.slice(0, max).map(render).join('') + (items.length > max ? `<li class="none">외 ${items.length - max}건</li>` : '') : '<li class="okline">✔ 해당 없음</li>';
@@ -174,7 +180,7 @@
       const nm = c.dueBasis === '인증만료' ? '만료' : '기한';
       return c.daysLeft < 0 ? `<span class="dt red">${nm} +${-c.daysLeft}일${dense ? '' : (c.dueBasis === '인증만료' ? ' 경과' : ' 초과')}</span>` : `<span class="dt ${c.level}">${nm} D-${c.daysLeft}</span>`;
     };
-    const elTag = (c) => (c.elapsed == null ? '<span class="el">접수 전</span>' : `<span class="el ${c.elapsed >= C.DEADLINE.days ? 'late' : c.elapsed >= C.DEADLINE.slow ? 'slow' : ''}">+${c.elapsed}일</span>`);
+    const elTag = (c) => (c.elapsed == null ? '<span class="el">접수 전</span>' : `<span class="el ${c.elapsed >= (c.limitDays || C.DEADLINE.days) ? 'late' : c.elapsed >= C.DEADLINE.slow ? 'slow' : ''}">+${c.elapsed}일</span>`);
     const wnd = C.monthWindow(y, m, 2, 2);
     $('m4').innerHTML = plan.length ? wnd.map((w) => {
       const all = cases.filter((c) => c.ym.y === w.y && c.ym.m === w.m);
@@ -187,7 +193,7 @@
         `<div class="alerts">${od ? `<span class="al red">기한 초과 ${od}</span>` : ''}${risk ? `<span class="al red">접수 필요 ${risk}</span>` : ''}${soon ? `<span class="al orange">기한 임박 ${soon}</span>` : ''}${!od && !risk && !soon ? '<span class="al ok">기한 문제 없음</span>' : ''}</div>` +
         `<div class="sbar">${counts.map((c, i) => (c ? `<i class="s${i}" style="flex:${c}"></i>` : '')).join('')}</div>` +
         `<div class="chips2">${counts.map((c, i) => (c ? `<span class="sc s${i}">${esc(ST[i])} ${c}</span>` : '')).join('')}</div>` +
-        `<ul>` + (open.length ? open.slice(0, MAXL).map((c) => `<li class="${c.overdue || c.renewalRisk ? 'od' : ''}"><span class="tx"><span class="cn">${esc(c.company)}</span><span class="sub">${esc(c.type || '')}${c.type === '갱신' && c.expiry ? ' · 만료 ' + md2(c.expiry) : ''}${c.received ? ' · 접수 ' + md2(c.received) : ''} · ${esc(c.lead)}</span></span><span class="rt"><span class="rr">${elTag(c)}<span class="sc s${c.stageIdx}" title="${esc(ST[c.stageIdx])}">${esc(dense ? ST[c.stageIdx].slice(0, 2) : ST[c.stageIdx])}</span></span>${dtag(c, dense)}</span></li>`).join('') + (open.length > MAXL ? `<li class="more">급한 순 ${MAXL}건 표시 · 외 ${open.length - MAXL}건</li>` : '')
+        `<ul>` + (open.length ? open.slice(0, MAXL).map((c) => `<li class="${c.overdue || c.renewalRisk ? 'od' : ''}"><span class="tx"><span class="cn">${divBadge(c.div)}${esc(c.company)}</span><span class="sub">${esc(c.type || '')}${c.type === '갱신' && c.expiry ? ' · 만료 ' + md2(c.expiry) : ''}${c.received ? ' · 접수 ' + md2(c.received) : ''} · ${esc(c.lead)}</span></span><span class="rt"><span class="rr">${elTag(c)}<span class="sc s${c.stageIdx}" title="${esc(ST[c.stageIdx])}">${esc(dense ? ST[c.stageIdx].slice(0, 2) : ST[c.stageIdx])}</span></span>${dtag(c, dense)}</span></li>`).join('') + (open.length > MAXL ? `<li class="more">급한 순 ${MAXL}건 표시 · 외 ${open.length - MAXL}건</li>` : '')
           : (all.length ? '<li class="okline">✔ 모두 발급 완료</li>' : '<li class="more">해당 건 없음</li>')) + '</ul></div>';
     }).join('') : '<p class="none">연간 배정표가 등록되어 있지 않습니다</p>';
 
@@ -199,16 +205,16 @@
     const oldOpen = cases.filter((c) => c.stageIdx < NLAST && !inWin(c) && (c.overdue || c.renewalRisk)).length;
     cases.filter((c) => c.stageIdx < NLAST && inWin(c)).forEach((c) => {
       const nm = c.dueBasis === '인증만료' ? '만료' : '기한';
-      if (c.renewalRisk) acts.push({ rank: 1, sev: 'red', tag: '접수 필요', who: c.lead, text: c.company, sub: c.type, when: c.toExpiry < 0 ? `만료 +${-c.toExpiry}일` : `만료 D-${c.toExpiry}`, mag: c.toExpiry });
-      else if (c.overdue) acts.push({ rank: 0, sev: 'red', tag: nm === '만료' ? '만료 경과' : '기한 초과', who: c.lead, text: c.company, sub: ST[c.stageIdx], when: c.daysLeft == null ? '소속 월 경과' : `${nm} +${-c.daysLeft}일`, mag: c.daysLeft == null ? -999 : c.daysLeft });
-      else if (c.level === 'red') acts.push({ rank: 4, sev: 'red', tag: '기한 촉박', who: c.lead, text: c.company, sub: ST[c.stageIdx], when: `${nm} D-${c.daysLeft}`, mag: c.daysLeft });
-      else if (c.level === 'orange') acts.push({ rank: 7, sev: 'orange', tag: '기한 임박', who: c.lead, text: c.company, sub: ST[c.stageIdx], when: `${nm} D-${c.daysLeft}`, mag: c.daysLeft });
+      if (c.renewalRisk) acts.push({ rank: 1, sev: 'red', tag: '접수 필요', who: c.lead, div: c.div, text: c.company, sub: c.type, when: c.toExpiry < 0 ? `만료 +${-c.toExpiry}일` : `만료 D-${c.toExpiry}`, mag: c.toExpiry });
+      else if (c.overdue) acts.push({ rank: 0, sev: 'red', tag: nm === '만료' ? '만료 경과' : '기한 초과', who: c.lead, div: c.div, text: c.company, sub: ST[c.stageIdx], when: c.daysLeft == null ? '소속 월 경과' : `${nm} +${-c.daysLeft}일`, mag: c.daysLeft == null ? -999 : c.daysLeft });
+      else if (c.level === 'red') acts.push({ rank: 4, sev: 'red', tag: '기한 촉박', who: c.lead, div: c.div, text: c.company, sub: ST[c.stageIdx], when: `${nm} D-${c.daysLeft}`, mag: c.daysLeft });
+      else if (c.level === 'orange') acts.push({ rank: 7, sev: 'orange', tag: '기한 임박', who: c.lead, div: c.div, text: c.company, sub: ST[c.stageIdx], when: `${nm} D-${c.daysLeft}`, mag: c.daysLeft });
     });
-    pend.filter((p) => p.level !== 'normal').forEach((p) => acts.push({ rank: p.level === 'red' ? 2 : 8, sev: p.level === 'red' ? 'red' : 'orange', tag: p.level === 'red' ? '확인 지연' : '확인 주의', who: p.auditor, text: p.company, sub: `${mdd(p.date)} 심사`, when: p.waitDays ? `등록 후 ${p.waitDays}일` : `D-${p.daysToAudit}`, mag: -p.waitDays }));
+    pend.filter((p) => p.level !== 'normal').forEach((p) => acts.push({ rank: p.level === 'red' ? 2 : 8, sev: p.level === 'red' ? 'red' : 'orange', tag: p.level === 'red' ? '확인 지연' : '확인 주의', who: p.auditor, div: divOfName(p.company, p.field), text: p.company, sub: `${mdd(p.date)} 심사`, when: p.waitDays ? `등록 후 ${p.waitDays}일` : `D-${p.daysToAudit}`, mag: -p.waitDays }));
     conf.forEach((c) => acts.push({ rank: 3, sev: 'red', tag: '일정 충돌', who: c.auditor, text: c.companies.join(' / '), sub: mdd(c.date), when: `${c.companies.length}건 중복`, mag: 0 }));
-    late.forEach((t) => acts.push({ rank: 5, sev: 'orange', tag: '보고서 지연', who: t.owner, text: t.title, sub: t.company, when: `지연 ${t.late}일`, mag: -t.late }));
-    rc.missing.forEach((x) => acts.push({ rank: 6, sev: 'orange', tag: '일정 누락', who: x.lead, text: x.company, sub: `${x.month}월 배정`, when: `${m - x.month}개월 경과`, mag: x.month - m }));
-    rc.unscheduled.forEach((x) => acts.push({ rank: 6, sev: 'orange', tag: '일정 미확정', who: x.lead, text: x.company, sub: `${x.month}월 배정`, when: '이번 달', mag: 0 }));
+    late.forEach((t) => acts.push({ rank: 5, sev: 'orange', tag: '보고서 지연', who: t.owner, div: divOfName(t.company, ''), text: t.title, sub: t.company, when: `지연 ${t.late}일`, mag: -t.late }));
+    rc.missing.forEach((x) => acts.push({ rank: 6, sev: 'orange', tag: '일정 누락', who: x.lead, div: divOfName(x.company, ''), text: x.company, sub: `${x.month}월 배정`, when: `${m - x.month}개월 경과`, mag: x.month - m }));
+    rc.unscheduled.forEach((x) => acts.push({ rank: 6, sev: 'orange', tag: '일정 미확정', who: x.lead, div: divOfName(x.company, ''), text: x.company, sub: `${x.month}월 배정`, when: '이번 달', mag: 0 }));
     acts.sort((a, b) => a.rank - b.rank || a.mag - b.mag || a.who.localeCompare(b.who, 'ko'));
     const cnt = (...ranks) => acts.filter((a) => ranks.includes(a.rank)).length;
     $('actTiles').style.gridTemplateColumns = 'repeat(5, 1fr)';
@@ -222,26 +228,15 @@
     acts.forEach((a, i) => { if (picked.size < MAXACT && !picked.has(i)) picked.add(i); });
     const shownActs = acts.filter((_, i) => picked.has(i));
     $('l-act').innerHTML = acts.length
-      ? shownActs.map((a) => `<li><span class="lv ${a.sev}">${esc(a.tag)}</span><span class="who">${esc(a.who)}</span><span class="co">${esc(a.text)}${a.sub ? ` <small>${esc(a.sub)}</small>` : ''}</span><span class="tag2 ${a.sev}">${esc(a.when)}</span></li>`).join('') + (acts.length > shownActs.length ? `<li class="none">종류별로 골고루 ${shownActs.length}건 표시 · 외 ${acts.length - shownActs.length}건</li>` : '')
+      ? shownActs.map((a) => `<li><span class="lv ${a.sev}">${esc(a.tag)}</span><span class="who">${esc(a.who)}</span><span class="co">${divBadge(a.div)}${esc(a.text)}${a.sub ? ` <small>${esc(a.sub)}</small>` : ''}</span><span class="tag2 ${a.sev}">${esc(a.when)}</span></li>`).join('') + (acts.length > shownActs.length ? `<li class="none">종류별로 골고루 ${shownActs.length}건 표시 · 외 ${acts.length - shownActs.length}건</li>` : '')
       : '<li class="okline">✔ 지금 조치가 필요한 건이 없습니다</li>';
     $('act-note').textContent = oldOpen ? `※ 5개월 범위 밖의 오래된 미처리 ${oldOpen}건(기한·만료 경과)은 이 목록에서 제외했습니다. 별도 점검이 필요합니다.` : '';
     const byWho = new Map();
-    acts.forEach((a) => { const w = byWho.get(a.who) || { n: 0, red: 0, worst: a }; w.n++; if (a.sev === 'red') w.red++; byWho.set(a.who, w); });
+    acts.forEach((a) => { const w = byWho.get(a.who) || { n: 0, red: 0, d: {} }; w.n++; if (a.sev === 'red') w.red++; if (a.div) w.d[a.div] = (w.d[a.div] || 0) + 1; byWho.set(a.who, w); });
     const whoList = [...byWho.entries()].sort((a, b) => b[1].red - a[1].red || b[1].n - a[1].n);
     $('l-actp').innerHTML = whoList.length
-      ? whoList.slice(0, 12).map(([n, w]) => `<li><span class="who">${esc(n)}</span><span class="co"></span><span class="tag2 ${w.red ? 'red' : 'orange'}">${w.n}건${w.red ? ` · 긴급 ${w.red}` : ''}</span></li>`).join('') + (whoList.length > 12 ? `<li class="none">외 ${whoList.length - 12}명</li>` : '')
+      ? whoList.slice(0, 12).map(([n, w]) => `<li><span class="who">${esc(n)}</span><span class="co">${Object.keys(w.d).length > 1 ? `<small>${C.DIVS.filter((d) => w.d[d]).map((d) => `${d === '수산' ? '수산' : '농축'} ${w.d[d]}`).join(' · ')}</small>` : ''}</span><span class="tag2 ${w.red ? 'red' : 'orange'}">${w.n}건${w.red ? ` · 긴급 ${w.red}` : ''}</span></li>`).join('') + (whoList.length > 12 ? `<li class="none">외 ${whoList.length - 12}명</li>` : '')
       : '<li class="okline">✔ 없음</li>';
-
-    /* 화면 4: 연간 월별 부하(배정 기준) */
-    const names = [...new Set([...Object.keys(trend), ...rows.map((r) => r.lead)])].sort((a, b) => a.localeCompare(b, 'ko'));
-    const now_m = m;
-    $('heat').innerHTML = plan.length
-      ? `<div class="hr hd"><div></div>${Array.from({ length: 12 }, (_, i) => `<div class="${i + 1 === now_m ? 'now' : ''}">${i + 1}월</div>`).join('')}</div>` +
-        names.map((n) => `<div class="hr"><div class="nm">${esc(n)}</div>${Array.from({ length: 12 }, (_, i) => { const v = (trend[n] || [])[i] || 0; const lv = n.startsWith('(') ? 'ok' : R.levelOf(v); return `<div class="${v ? (lv === 'ok' ? '' : 'c-' + lv) : 'c-none'}${i + 1 === now_m ? ' now' : ''}">${v ? fmt(v) : '–'}</div>`; }).join('')}</div>`).join('')
-      : '<p class="none">연간 배정표가 등록되어 있지 않습니다</p>';
-    $('crowd').innerHTML = crowd.length
-      ? crowd.slice(0, 10).map((c) => `<li><span class="d">${c.m}월</span><span class="who">${esc(c.name)}</span><span class="co"></span><span class="tag2 ${c.level === 'red' ? 'red' : 'orange'}">${fmt(c.v)}</span></li>`).join('') + (crowd.length > 10 ? `<li class="none">외 ${crowd.length - 10}건</li>` : '')
-      : '<li class="okline">✔ 이번 달 이후 쏠림 없음</li>';
 
     $('updated').textContent = AuditData.IMPORTED ? `가져온 데이터 · ${AuditData.builtAt}` : DEMO ? `샘플 데이터 · 기준일 ${today}` : `데이터 갱신 ${new Date().toTimeString().slice(0, 8)}`;
   }
@@ -287,7 +282,8 @@
   async function refresh() {
     try {
       const [rec, tk, pl, ak] = await Promise.all([fetchRecords(), fetchTasks(), fetchPlan(), fetchAcks()]);
-      rows = R.parseRecords(rec).rows; tasks = T.parseTasks(tk).tasks; plan = C.parsePlan(pl).plan; acks = AK.parseAcks(ak).acks;
+      allRows = R.parseRecords(rec).rows; allTasks = T.parseTasks(tk).tasks; allPlan = C.parsePlan(pl).plan; allAcks = AK.parseAcks(ak).acks;
+      applyFilter();
       render();
     } catch (e) { /* 실패 시 직전 화면 유지 */ }
   }
@@ -296,6 +292,7 @@
   document.querySelectorAll('.dot').forEach((d, i) => d.addEventListener('click', () => { show(i); startRotate(); }));
   document.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowRight') { show(slide + 1); startRotate(); } else if (e.key === 'ArrowLeft') { show(slide - 1); startRotate(); }
+    else if (e.key === 'd' || e.key === 'D') { const order = ['', ...C.DIVS]; divFilter = order[(order.indexOf(divFilter) + 1) % order.length]; applyFilter(); render(); }   // 전체 → 농축산 → 수산
   });
   const only = /^\d+$/.test(slideParam) ? +slideParam : 0; // ?slide=2 는 표시 중인 화면 목록의 2번째로 고정(확인용)
   window.addEventListener('storage', (e) => { if (e.key === AuditData.ACK_KEY) refresh(); else if (e.key === AuditData.IMPORT_KEY) location.reload(); }); // 같은 브라우저의 다른 탭(심사원 화면 시안)에서 확인하면 바로 반영

@@ -94,6 +94,7 @@
     const stages = cnt(active, (c) => c.stage);
     $('s-ledger').innerHTML = chip(`전체 <b>${st.cases.length}</b>건`) + chip(`진행 대상 <b>${active.length}</b>건`, 'ok') +
       L.STAGES.map((s) => chip(`${s} <b>${stages[s] || 0}</b>`)).join('') +
+      chip(`농축산 <b>${active.filter((c) => c.div === '농축산').length}</b> (해외 포함)`) + chip(`수산 <b>${active.filter((c) => c.div === '수산').length}</b>`) +
       chip(`심사원 미배정 <b>${active.filter((c) => c.lead === L.NO_LEAD).length}</b>`, active.some((c) => c.lead === L.NO_LEAD) ? 'warn' : '') +
       chip(`날짜가 없어 월을 정할 수 없는 건 <b>${plan.noDate}</b>`, plan.noDate ? 'warn' : '') +
       chip(`기한 날짜 있음 <b>${active.filter((c) => c.due).length}</b>`);

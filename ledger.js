@@ -113,7 +113,7 @@
       if (!/^\d+$/.test(clean(r[0]))) continue;                       // 번호가 없는 줄(소계·메모)은 제외
       const rawType = clean(get(r, 'type'));
       const c = {
-        sheet: kind, srcRow: i + 1, company, rawType, type: typeOf(rawType),
+        sheet: kind, div: kind === '수산' ? '수산' : '농축산', srcRow: i + 1, company, rawType, type: typeOf(rawType),
         field: mapField(get(r, 'field'), kind), fieldRaw: clean(get(r, 'field')),
         region: clean(get(r, 'region')),
         expiry: isoOf(get(r, 'expiry')), received: isoOf(get(r, 'received')), due: isoOf(get(r, 'due')),
@@ -170,7 +170,7 @@
       if (!base) { noDate++; return; }
       records.push({
         '업체명': c.company, '인증분야': c.field, '정심사원': c.lead, '부심사원': c.subs.join(','), '지역': c.region,
-        '표본어가 수': c.farms == null ? '' : c.farms, '진행단계': c.stage, '구분': c.type,
+        '표본어가 수': c.farms == null ? '' : c.farms, '부문': c.div, '진행단계': c.stage, '구분': c.type,
         '접수일': c.received, '인증만료일': c.type === '갱신' ? c.expiry : '', '처리기한': c.due,
       });
     });
